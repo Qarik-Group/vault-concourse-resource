@@ -1,0 +1,24 @@
+resource_types:
+- name: vault-concourse-resource
+  type: registry-image
+  source:
+    repository: starkandwayne/vault-concourse-resource
+
+resources:
+- name: vault-concourse-resource
+  type: vault-concourse-resource
+  check_every: 5m
+  source:
+    # Every resource created using ofcourse will have `log_level`
+    # as an available option in the source configuration. If not
+    # given, it defaults to `info`.
+    log_level: debug
+
+jobs:
+- name: do-it
+  plan:
+  - get: vault-concourse-resource
+    trigger: true
+  - put: vault-concourse-resource
+    params:
+      version_path: vault-concourse-resource/version
