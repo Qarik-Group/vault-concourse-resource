@@ -5,725 +5,237 @@ import (
 	"sync"
 
 	"github.com/cloudfoundry-community/vaultkv"
+	vaulta "github.com/starkandwayne/safe/vault"
 	"github.com/starkandwayne/vault-concourse-resource/vault"
 )
 
 type FakeClient struct {
-	AuthApproleStub        func(string, string) (*vaultkv.AuthOutput, error)
-	authApproleMutex       sync.RWMutex
-	authApproleArgsForCall []struct {
-		arg1 string
-		arg2 string
+	ClientStub        func() *vaultkv.KV
+	clientMutex       sync.RWMutex
+	clientArgsForCall []struct {
 	}
-	authApproleReturns struct {
-		result1 *vaultkv.AuthOutput
+	clientReturns struct {
+		result1 *vaultkv.KV
+	}
+	clientReturnsOnCall map[int]struct {
+		result1 *vaultkv.KV
+	}
+	ConstructSecretsStub        func(string, vaulta.TreeOpts) (vaulta.Secrets, error)
+	constructSecretsMutex       sync.RWMutex
+	constructSecretsArgsForCall []struct {
+		arg1 string
+		arg2 vaulta.TreeOpts
+	}
+	constructSecretsReturns struct {
+		result1 vaulta.Secrets
 		result2 error
 	}
-	authApproleReturnsOnCall map[int]struct {
-		result1 *vaultkv.AuthOutput
+	constructSecretsReturnsOnCall map[int]struct {
+		result1 vaulta.Secrets
 		result2 error
 	}
-	GetStub        func(string, interface{}) error
-	getMutex       sync.RWMutex
-	getArgsForCall []struct {
+	WriteStub        func(string, *vaulta.Secret) error
+	writeMutex       sync.RWMutex
+	writeArgsForCall []struct {
 		arg1 string
-		arg2 interface{}
+		arg2 *vaulta.Secret
 	}
-	getReturns struct {
+	writeReturns struct {
 		result1 error
 	}
-	getReturnsOnCall map[int]struct {
+	writeReturnsOnCall map[int]struct {
 		result1 error
-	}
-	IsKVv2MountStub        func(string) (string, bool, error)
-	isKVv2MountMutex       sync.RWMutex
-	isKVv2MountArgsForCall []struct {
-		arg1 string
-	}
-	isKVv2MountReturns struct {
-		result1 string
-		result2 bool
-		result3 error
-	}
-	isKVv2MountReturnsOnCall map[int]struct {
-		result1 string
-		result2 bool
-		result3 error
-	}
-	ListStub        func(string) ([]string, error)
-	listMutex       sync.RWMutex
-	listArgsForCall []struct {
-		arg1 string
-	}
-	listReturns struct {
-		result1 []string
-		result2 error
-	}
-	listReturnsOnCall map[int]struct {
-		result1 []string
-		result2 error
-	}
-	ListMountsStub        func() (map[string]vaultkv.Mount, error)
-	listMountsMutex       sync.RWMutex
-	listMountsArgsForCall []struct {
-	}
-	listMountsReturns struct {
-		result1 map[string]vaultkv.Mount
-		result2 error
-	}
-	listMountsReturnsOnCall map[int]struct {
-		result1 map[string]vaultkv.Mount
-		result2 error
-	}
-	SetStub        func(string, map[string]string) error
-	setMutex       sync.RWMutex
-	setArgsForCall []struct {
-		arg1 string
-		arg2 map[string]string
-	}
-	setReturns struct {
-		result1 error
-	}
-	setReturnsOnCall map[int]struct {
-		result1 error
-	}
-	V2GetStub        func(string, string, interface{}, *vaultkv.V2GetOpts) (vaultkv.V2Version, error)
-	v2GetMutex       sync.RWMutex
-	v2GetArgsForCall []struct {
-		arg1 string
-		arg2 string
-		arg3 interface{}
-		arg4 *vaultkv.V2GetOpts
-	}
-	v2GetReturns struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}
-	v2GetReturnsOnCall map[int]struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}
-	V2ListStub        func(string, string) ([]string, error)
-	v2ListMutex       sync.RWMutex
-	v2ListArgsForCall []struct {
-		arg1 string
-		arg2 string
-	}
-	v2ListReturns struct {
-		result1 []string
-		result2 error
-	}
-	v2ListReturnsOnCall map[int]struct {
-		result1 []string
-		result2 error
-	}
-	V2SetStub        func(string, string, interface{}, *vaultkv.V2SetOpts) (vaultkv.V2Version, error)
-	v2SetMutex       sync.RWMutex
-	v2SetArgsForCall []struct {
-		arg1 string
-		arg2 string
-		arg3 interface{}
-		arg4 *vaultkv.V2SetOpts
-	}
-	v2SetReturns struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}
-	v2SetReturnsOnCall map[int]struct {
-		result1 vaultkv.V2Version
-		result2 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeClient) AuthApprole(arg1 string, arg2 string) (*vaultkv.AuthOutput, error) {
-	fake.authApproleMutex.Lock()
-	ret, specificReturn := fake.authApproleReturnsOnCall[len(fake.authApproleArgsForCall)]
-	fake.authApproleArgsForCall = append(fake.authApproleArgsForCall, struct {
-		arg1 string
-		arg2 string
-	}{arg1, arg2})
-	fake.recordInvocation("AuthApprole", []interface{}{arg1, arg2})
-	fake.authApproleMutex.Unlock()
-	if fake.AuthApproleStub != nil {
-		return fake.AuthApproleStub(arg1, arg2)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.authApproleReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) AuthApproleCallCount() int {
-	fake.authApproleMutex.RLock()
-	defer fake.authApproleMutex.RUnlock()
-	return len(fake.authApproleArgsForCall)
-}
-
-func (fake *FakeClient) AuthApproleCalls(stub func(string, string) (*vaultkv.AuthOutput, error)) {
-	fake.authApproleMutex.Lock()
-	defer fake.authApproleMutex.Unlock()
-	fake.AuthApproleStub = stub
-}
-
-func (fake *FakeClient) AuthApproleArgsForCall(i int) (string, string) {
-	fake.authApproleMutex.RLock()
-	defer fake.authApproleMutex.RUnlock()
-	argsForCall := fake.authApproleArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
-}
-
-func (fake *FakeClient) AuthApproleReturns(result1 *vaultkv.AuthOutput, result2 error) {
-	fake.authApproleMutex.Lock()
-	defer fake.authApproleMutex.Unlock()
-	fake.AuthApproleStub = nil
-	fake.authApproleReturns = struct {
-		result1 *vaultkv.AuthOutput
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) AuthApproleReturnsOnCall(i int, result1 *vaultkv.AuthOutput, result2 error) {
-	fake.authApproleMutex.Lock()
-	defer fake.authApproleMutex.Unlock()
-	fake.AuthApproleStub = nil
-	if fake.authApproleReturnsOnCall == nil {
-		fake.authApproleReturnsOnCall = make(map[int]struct {
-			result1 *vaultkv.AuthOutput
-			result2 error
-		})
-	}
-	fake.authApproleReturnsOnCall[i] = struct {
-		result1 *vaultkv.AuthOutput
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) Get(arg1 string, arg2 interface{}) error {
-	fake.getMutex.Lock()
-	ret, specificReturn := fake.getReturnsOnCall[len(fake.getArgsForCall)]
-	fake.getArgsForCall = append(fake.getArgsForCall, struct {
-		arg1 string
-		arg2 interface{}
-	}{arg1, arg2})
-	fake.recordInvocation("Get", []interface{}{arg1, arg2})
-	fake.getMutex.Unlock()
-	if fake.GetStub != nil {
-		return fake.GetStub(arg1, arg2)
-	}
-	if specificReturn {
-		return ret.result1
-	}
-	fakeReturns := fake.getReturns
-	return fakeReturns.result1
-}
-
-func (fake *FakeClient) GetCallCount() int {
-	fake.getMutex.RLock()
-	defer fake.getMutex.RUnlock()
-	return len(fake.getArgsForCall)
-}
-
-func (fake *FakeClient) GetCalls(stub func(string, interface{}) error) {
-	fake.getMutex.Lock()
-	defer fake.getMutex.Unlock()
-	fake.GetStub = stub
-}
-
-func (fake *FakeClient) GetArgsForCall(i int) (string, interface{}) {
-	fake.getMutex.RLock()
-	defer fake.getMutex.RUnlock()
-	argsForCall := fake.getArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
-}
-
-func (fake *FakeClient) GetReturns(result1 error) {
-	fake.getMutex.Lock()
-	defer fake.getMutex.Unlock()
-	fake.GetStub = nil
-	fake.getReturns = struct {
-		result1 error
-	}{result1}
-}
-
-func (fake *FakeClient) GetReturnsOnCall(i int, result1 error) {
-	fake.getMutex.Lock()
-	defer fake.getMutex.Unlock()
-	fake.GetStub = nil
-	if fake.getReturnsOnCall == nil {
-		fake.getReturnsOnCall = make(map[int]struct {
-			result1 error
-		})
-	}
-	fake.getReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
-}
-
-func (fake *FakeClient) IsKVv2Mount(arg1 string) (string, bool, error) {
-	fake.isKVv2MountMutex.Lock()
-	ret, specificReturn := fake.isKVv2MountReturnsOnCall[len(fake.isKVv2MountArgsForCall)]
-	fake.isKVv2MountArgsForCall = append(fake.isKVv2MountArgsForCall, struct {
-		arg1 string
-	}{arg1})
-	fake.recordInvocation("IsKVv2Mount", []interface{}{arg1})
-	fake.isKVv2MountMutex.Unlock()
-	if fake.IsKVv2MountStub != nil {
-		return fake.IsKVv2MountStub(arg1)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2, ret.result3
-	}
-	fakeReturns := fake.isKVv2MountReturns
-	return fakeReturns.result1, fakeReturns.result2, fakeReturns.result3
-}
-
-func (fake *FakeClient) IsKVv2MountCallCount() int {
-	fake.isKVv2MountMutex.RLock()
-	defer fake.isKVv2MountMutex.RUnlock()
-	return len(fake.isKVv2MountArgsForCall)
-}
-
-func (fake *FakeClient) IsKVv2MountCalls(stub func(string) (string, bool, error)) {
-	fake.isKVv2MountMutex.Lock()
-	defer fake.isKVv2MountMutex.Unlock()
-	fake.IsKVv2MountStub = stub
-}
-
-func (fake *FakeClient) IsKVv2MountArgsForCall(i int) string {
-	fake.isKVv2MountMutex.RLock()
-	defer fake.isKVv2MountMutex.RUnlock()
-	argsForCall := fake.isKVv2MountArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeClient) IsKVv2MountReturns(result1 string, result2 bool, result3 error) {
-	fake.isKVv2MountMutex.Lock()
-	defer fake.isKVv2MountMutex.Unlock()
-	fake.IsKVv2MountStub = nil
-	fake.isKVv2MountReturns = struct {
-		result1 string
-		result2 bool
-		result3 error
-	}{result1, result2, result3}
-}
-
-func (fake *FakeClient) IsKVv2MountReturnsOnCall(i int, result1 string, result2 bool, result3 error) {
-	fake.isKVv2MountMutex.Lock()
-	defer fake.isKVv2MountMutex.Unlock()
-	fake.IsKVv2MountStub = nil
-	if fake.isKVv2MountReturnsOnCall == nil {
-		fake.isKVv2MountReturnsOnCall = make(map[int]struct {
-			result1 string
-			result2 bool
-			result3 error
-		})
-	}
-	fake.isKVv2MountReturnsOnCall[i] = struct {
-		result1 string
-		result2 bool
-		result3 error
-	}{result1, result2, result3}
-}
-
-func (fake *FakeClient) List(arg1 string) ([]string, error) {
-	fake.listMutex.Lock()
-	ret, specificReturn := fake.listReturnsOnCall[len(fake.listArgsForCall)]
-	fake.listArgsForCall = append(fake.listArgsForCall, struct {
-		arg1 string
-	}{arg1})
-	fake.recordInvocation("List", []interface{}{arg1})
-	fake.listMutex.Unlock()
-	if fake.ListStub != nil {
-		return fake.ListStub(arg1)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.listReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) ListCallCount() int {
-	fake.listMutex.RLock()
-	defer fake.listMutex.RUnlock()
-	return len(fake.listArgsForCall)
-}
-
-func (fake *FakeClient) ListCalls(stub func(string) ([]string, error)) {
-	fake.listMutex.Lock()
-	defer fake.listMutex.Unlock()
-	fake.ListStub = stub
-}
-
-func (fake *FakeClient) ListArgsForCall(i int) string {
-	fake.listMutex.RLock()
-	defer fake.listMutex.RUnlock()
-	argsForCall := fake.listArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeClient) ListReturns(result1 []string, result2 error) {
-	fake.listMutex.Lock()
-	defer fake.listMutex.Unlock()
-	fake.ListStub = nil
-	fake.listReturns = struct {
-		result1 []string
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) ListReturnsOnCall(i int, result1 []string, result2 error) {
-	fake.listMutex.Lock()
-	defer fake.listMutex.Unlock()
-	fake.ListStub = nil
-	if fake.listReturnsOnCall == nil {
-		fake.listReturnsOnCall = make(map[int]struct {
-			result1 []string
-			result2 error
-		})
-	}
-	fake.listReturnsOnCall[i] = struct {
-		result1 []string
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) ListMounts() (map[string]vaultkv.Mount, error) {
-	fake.listMountsMutex.Lock()
-	ret, specificReturn := fake.listMountsReturnsOnCall[len(fake.listMountsArgsForCall)]
-	fake.listMountsArgsForCall = append(fake.listMountsArgsForCall, struct {
+func (fake *FakeClient) Client() *vaultkv.KV {
+	fake.clientMutex.Lock()
+	ret, specificReturn := fake.clientReturnsOnCall[len(fake.clientArgsForCall)]
+	fake.clientArgsForCall = append(fake.clientArgsForCall, struct {
 	}{})
-	fake.recordInvocation("ListMounts", []interface{}{})
-	fake.listMountsMutex.Unlock()
-	if fake.ListMountsStub != nil {
-		return fake.ListMountsStub()
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.listMountsReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) ListMountsCallCount() int {
-	fake.listMountsMutex.RLock()
-	defer fake.listMountsMutex.RUnlock()
-	return len(fake.listMountsArgsForCall)
-}
-
-func (fake *FakeClient) ListMountsCalls(stub func() (map[string]vaultkv.Mount, error)) {
-	fake.listMountsMutex.Lock()
-	defer fake.listMountsMutex.Unlock()
-	fake.ListMountsStub = stub
-}
-
-func (fake *FakeClient) ListMountsReturns(result1 map[string]vaultkv.Mount, result2 error) {
-	fake.listMountsMutex.Lock()
-	defer fake.listMountsMutex.Unlock()
-	fake.ListMountsStub = nil
-	fake.listMountsReturns = struct {
-		result1 map[string]vaultkv.Mount
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) ListMountsReturnsOnCall(i int, result1 map[string]vaultkv.Mount, result2 error) {
-	fake.listMountsMutex.Lock()
-	defer fake.listMountsMutex.Unlock()
-	fake.ListMountsStub = nil
-	if fake.listMountsReturnsOnCall == nil {
-		fake.listMountsReturnsOnCall = make(map[int]struct {
-			result1 map[string]vaultkv.Mount
-			result2 error
-		})
-	}
-	fake.listMountsReturnsOnCall[i] = struct {
-		result1 map[string]vaultkv.Mount
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) Set(arg1 string, arg2 map[string]string) error {
-	fake.setMutex.Lock()
-	ret, specificReturn := fake.setReturnsOnCall[len(fake.setArgsForCall)]
-	fake.setArgsForCall = append(fake.setArgsForCall, struct {
-		arg1 string
-		arg2 map[string]string
-	}{arg1, arg2})
-	fake.recordInvocation("Set", []interface{}{arg1, arg2})
-	fake.setMutex.Unlock()
-	if fake.SetStub != nil {
-		return fake.SetStub(arg1, arg2)
+	fake.recordInvocation("Client", []interface{}{})
+	fake.clientMutex.Unlock()
+	if fake.ClientStub != nil {
+		return fake.ClientStub()
 	}
 	if specificReturn {
 		return ret.result1
 	}
-	fakeReturns := fake.setReturns
+	fakeReturns := fake.clientReturns
 	return fakeReturns.result1
 }
 
-func (fake *FakeClient) SetCallCount() int {
-	fake.setMutex.RLock()
-	defer fake.setMutex.RUnlock()
-	return len(fake.setArgsForCall)
+func (fake *FakeClient) ClientCallCount() int {
+	fake.clientMutex.RLock()
+	defer fake.clientMutex.RUnlock()
+	return len(fake.clientArgsForCall)
 }
 
-func (fake *FakeClient) SetCalls(stub func(string, map[string]string) error) {
-	fake.setMutex.Lock()
-	defer fake.setMutex.Unlock()
-	fake.SetStub = stub
+func (fake *FakeClient) ClientCalls(stub func() *vaultkv.KV) {
+	fake.clientMutex.Lock()
+	defer fake.clientMutex.Unlock()
+	fake.ClientStub = stub
 }
 
-func (fake *FakeClient) SetArgsForCall(i int) (string, map[string]string) {
-	fake.setMutex.RLock()
-	defer fake.setMutex.RUnlock()
-	argsForCall := fake.setArgsForCall[i]
+func (fake *FakeClient) ClientReturns(result1 *vaultkv.KV) {
+	fake.clientMutex.Lock()
+	defer fake.clientMutex.Unlock()
+	fake.ClientStub = nil
+	fake.clientReturns = struct {
+		result1 *vaultkv.KV
+	}{result1}
+}
+
+func (fake *FakeClient) ClientReturnsOnCall(i int, result1 *vaultkv.KV) {
+	fake.clientMutex.Lock()
+	defer fake.clientMutex.Unlock()
+	fake.ClientStub = nil
+	if fake.clientReturnsOnCall == nil {
+		fake.clientReturnsOnCall = make(map[int]struct {
+			result1 *vaultkv.KV
+		})
+	}
+	fake.clientReturnsOnCall[i] = struct {
+		result1 *vaultkv.KV
+	}{result1}
+}
+
+func (fake *FakeClient) ConstructSecrets(arg1 string, arg2 vaulta.TreeOpts) (vaulta.Secrets, error) {
+	fake.constructSecretsMutex.Lock()
+	ret, specificReturn := fake.constructSecretsReturnsOnCall[len(fake.constructSecretsArgsForCall)]
+	fake.constructSecretsArgsForCall = append(fake.constructSecretsArgsForCall, struct {
+		arg1 string
+		arg2 vaulta.TreeOpts
+	}{arg1, arg2})
+	fake.recordInvocation("ConstructSecrets", []interface{}{arg1, arg2})
+	fake.constructSecretsMutex.Unlock()
+	if fake.ConstructSecretsStub != nil {
+		return fake.ConstructSecretsStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.constructSecretsReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeClient) ConstructSecretsCallCount() int {
+	fake.constructSecretsMutex.RLock()
+	defer fake.constructSecretsMutex.RUnlock()
+	return len(fake.constructSecretsArgsForCall)
+}
+
+func (fake *FakeClient) ConstructSecretsCalls(stub func(string, vaulta.TreeOpts) (vaulta.Secrets, error)) {
+	fake.constructSecretsMutex.Lock()
+	defer fake.constructSecretsMutex.Unlock()
+	fake.ConstructSecretsStub = stub
+}
+
+func (fake *FakeClient) ConstructSecretsArgsForCall(i int) (string, vaulta.TreeOpts) {
+	fake.constructSecretsMutex.RLock()
+	defer fake.constructSecretsMutex.RUnlock()
+	argsForCall := fake.constructSecretsArgsForCall[i]
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *FakeClient) SetReturns(result1 error) {
-	fake.setMutex.Lock()
-	defer fake.setMutex.Unlock()
-	fake.SetStub = nil
-	fake.setReturns = struct {
+func (fake *FakeClient) ConstructSecretsReturns(result1 vaulta.Secrets, result2 error) {
+	fake.constructSecretsMutex.Lock()
+	defer fake.constructSecretsMutex.Unlock()
+	fake.ConstructSecretsStub = nil
+	fake.constructSecretsReturns = struct {
+		result1 vaulta.Secrets
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) ConstructSecretsReturnsOnCall(i int, result1 vaulta.Secrets, result2 error) {
+	fake.constructSecretsMutex.Lock()
+	defer fake.constructSecretsMutex.Unlock()
+	fake.ConstructSecretsStub = nil
+	if fake.constructSecretsReturnsOnCall == nil {
+		fake.constructSecretsReturnsOnCall = make(map[int]struct {
+			result1 vaulta.Secrets
+			result2 error
+		})
+	}
+	fake.constructSecretsReturnsOnCall[i] = struct {
+		result1 vaulta.Secrets
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeClient) Write(arg1 string, arg2 *vaulta.Secret) error {
+	fake.writeMutex.Lock()
+	ret, specificReturn := fake.writeReturnsOnCall[len(fake.writeArgsForCall)]
+	fake.writeArgsForCall = append(fake.writeArgsForCall, struct {
+		arg1 string
+		arg2 *vaulta.Secret
+	}{arg1, arg2})
+	fake.recordInvocation("Write", []interface{}{arg1, arg2})
+	fake.writeMutex.Unlock()
+	if fake.WriteStub != nil {
+		return fake.WriteStub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.writeReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeClient) WriteCallCount() int {
+	fake.writeMutex.RLock()
+	defer fake.writeMutex.RUnlock()
+	return len(fake.writeArgsForCall)
+}
+
+func (fake *FakeClient) WriteCalls(stub func(string, *vaulta.Secret) error) {
+	fake.writeMutex.Lock()
+	defer fake.writeMutex.Unlock()
+	fake.WriteStub = stub
+}
+
+func (fake *FakeClient) WriteArgsForCall(i int) (string, *vaulta.Secret) {
+	fake.writeMutex.RLock()
+	defer fake.writeMutex.RUnlock()
+	argsForCall := fake.writeArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeClient) WriteReturns(result1 error) {
+	fake.writeMutex.Lock()
+	defer fake.writeMutex.Unlock()
+	fake.WriteStub = nil
+	fake.writeReturns = struct {
 		result1 error
 	}{result1}
 }
 
-func (fake *FakeClient) SetReturnsOnCall(i int, result1 error) {
-	fake.setMutex.Lock()
-	defer fake.setMutex.Unlock()
-	fake.SetStub = nil
-	if fake.setReturnsOnCall == nil {
-		fake.setReturnsOnCall = make(map[int]struct {
+func (fake *FakeClient) WriteReturnsOnCall(i int, result1 error) {
+	fake.writeMutex.Lock()
+	defer fake.writeMutex.Unlock()
+	fake.WriteStub = nil
+	if fake.writeReturnsOnCall == nil {
+		fake.writeReturnsOnCall = make(map[int]struct {
 			result1 error
 		})
 	}
-	fake.setReturnsOnCall[i] = struct {
+	fake.writeReturnsOnCall[i] = struct {
 		result1 error
 	}{result1}
-}
-
-func (fake *FakeClient) V2Get(arg1 string, arg2 string, arg3 interface{}, arg4 *vaultkv.V2GetOpts) (vaultkv.V2Version, error) {
-	fake.v2GetMutex.Lock()
-	ret, specificReturn := fake.v2GetReturnsOnCall[len(fake.v2GetArgsForCall)]
-	fake.v2GetArgsForCall = append(fake.v2GetArgsForCall, struct {
-		arg1 string
-		arg2 string
-		arg3 interface{}
-		arg4 *vaultkv.V2GetOpts
-	}{arg1, arg2, arg3, arg4})
-	fake.recordInvocation("V2Get", []interface{}{arg1, arg2, arg3, arg4})
-	fake.v2GetMutex.Unlock()
-	if fake.V2GetStub != nil {
-		return fake.V2GetStub(arg1, arg2, arg3, arg4)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.v2GetReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) V2GetCallCount() int {
-	fake.v2GetMutex.RLock()
-	defer fake.v2GetMutex.RUnlock()
-	return len(fake.v2GetArgsForCall)
-}
-
-func (fake *FakeClient) V2GetCalls(stub func(string, string, interface{}, *vaultkv.V2GetOpts) (vaultkv.V2Version, error)) {
-	fake.v2GetMutex.Lock()
-	defer fake.v2GetMutex.Unlock()
-	fake.V2GetStub = stub
-}
-
-func (fake *FakeClient) V2GetArgsForCall(i int) (string, string, interface{}, *vaultkv.V2GetOpts) {
-	fake.v2GetMutex.RLock()
-	defer fake.v2GetMutex.RUnlock()
-	argsForCall := fake.v2GetArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
-}
-
-func (fake *FakeClient) V2GetReturns(result1 vaultkv.V2Version, result2 error) {
-	fake.v2GetMutex.Lock()
-	defer fake.v2GetMutex.Unlock()
-	fake.V2GetStub = nil
-	fake.v2GetReturns = struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) V2GetReturnsOnCall(i int, result1 vaultkv.V2Version, result2 error) {
-	fake.v2GetMutex.Lock()
-	defer fake.v2GetMutex.Unlock()
-	fake.V2GetStub = nil
-	if fake.v2GetReturnsOnCall == nil {
-		fake.v2GetReturnsOnCall = make(map[int]struct {
-			result1 vaultkv.V2Version
-			result2 error
-		})
-	}
-	fake.v2GetReturnsOnCall[i] = struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) V2List(arg1 string, arg2 string) ([]string, error) {
-	fake.v2ListMutex.Lock()
-	ret, specificReturn := fake.v2ListReturnsOnCall[len(fake.v2ListArgsForCall)]
-	fake.v2ListArgsForCall = append(fake.v2ListArgsForCall, struct {
-		arg1 string
-		arg2 string
-	}{arg1, arg2})
-	fake.recordInvocation("V2List", []interface{}{arg1, arg2})
-	fake.v2ListMutex.Unlock()
-	if fake.V2ListStub != nil {
-		return fake.V2ListStub(arg1, arg2)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.v2ListReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) V2ListCallCount() int {
-	fake.v2ListMutex.RLock()
-	defer fake.v2ListMutex.RUnlock()
-	return len(fake.v2ListArgsForCall)
-}
-
-func (fake *FakeClient) V2ListCalls(stub func(string, string) ([]string, error)) {
-	fake.v2ListMutex.Lock()
-	defer fake.v2ListMutex.Unlock()
-	fake.V2ListStub = stub
-}
-
-func (fake *FakeClient) V2ListArgsForCall(i int) (string, string) {
-	fake.v2ListMutex.RLock()
-	defer fake.v2ListMutex.RUnlock()
-	argsForCall := fake.v2ListArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2
-}
-
-func (fake *FakeClient) V2ListReturns(result1 []string, result2 error) {
-	fake.v2ListMutex.Lock()
-	defer fake.v2ListMutex.Unlock()
-	fake.V2ListStub = nil
-	fake.v2ListReturns = struct {
-		result1 []string
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) V2ListReturnsOnCall(i int, result1 []string, result2 error) {
-	fake.v2ListMutex.Lock()
-	defer fake.v2ListMutex.Unlock()
-	fake.V2ListStub = nil
-	if fake.v2ListReturnsOnCall == nil {
-		fake.v2ListReturnsOnCall = make(map[int]struct {
-			result1 []string
-			result2 error
-		})
-	}
-	fake.v2ListReturnsOnCall[i] = struct {
-		result1 []string
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) V2Set(arg1 string, arg2 string, arg3 interface{}, arg4 *vaultkv.V2SetOpts) (vaultkv.V2Version, error) {
-	fake.v2SetMutex.Lock()
-	ret, specificReturn := fake.v2SetReturnsOnCall[len(fake.v2SetArgsForCall)]
-	fake.v2SetArgsForCall = append(fake.v2SetArgsForCall, struct {
-		arg1 string
-		arg2 string
-		arg3 interface{}
-		arg4 *vaultkv.V2SetOpts
-	}{arg1, arg2, arg3, arg4})
-	fake.recordInvocation("V2Set", []interface{}{arg1, arg2, arg3, arg4})
-	fake.v2SetMutex.Unlock()
-	if fake.V2SetStub != nil {
-		return fake.V2SetStub(arg1, arg2, arg3, arg4)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	fakeReturns := fake.v2SetReturns
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeClient) V2SetCallCount() int {
-	fake.v2SetMutex.RLock()
-	defer fake.v2SetMutex.RUnlock()
-	return len(fake.v2SetArgsForCall)
-}
-
-func (fake *FakeClient) V2SetCalls(stub func(string, string, interface{}, *vaultkv.V2SetOpts) (vaultkv.V2Version, error)) {
-	fake.v2SetMutex.Lock()
-	defer fake.v2SetMutex.Unlock()
-	fake.V2SetStub = stub
-}
-
-func (fake *FakeClient) V2SetArgsForCall(i int) (string, string, interface{}, *vaultkv.V2SetOpts) {
-	fake.v2SetMutex.RLock()
-	defer fake.v2SetMutex.RUnlock()
-	argsForCall := fake.v2SetArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
-}
-
-func (fake *FakeClient) V2SetReturns(result1 vaultkv.V2Version, result2 error) {
-	fake.v2SetMutex.Lock()
-	defer fake.v2SetMutex.Unlock()
-	fake.V2SetStub = nil
-	fake.v2SetReturns = struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeClient) V2SetReturnsOnCall(i int, result1 vaultkv.V2Version, result2 error) {
-	fake.v2SetMutex.Lock()
-	defer fake.v2SetMutex.Unlock()
-	fake.V2SetStub = nil
-	if fake.v2SetReturnsOnCall == nil {
-		fake.v2SetReturnsOnCall = make(map[int]struct {
-			result1 vaultkv.V2Version
-			result2 error
-		})
-	}
-	fake.v2SetReturnsOnCall[i] = struct {
-		result1 vaultkv.V2Version
-		result2 error
-	}{result1, result2}
 }
 
 func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.authApproleMutex.RLock()
-	defer fake.authApproleMutex.RUnlock()
-	fake.getMutex.RLock()
-	defer fake.getMutex.RUnlock()
-	fake.isKVv2MountMutex.RLock()
-	defer fake.isKVv2MountMutex.RUnlock()
-	fake.listMutex.RLock()
-	defer fake.listMutex.RUnlock()
-	fake.listMountsMutex.RLock()
-	defer fake.listMountsMutex.RUnlock()
-	fake.setMutex.RLock()
-	defer fake.setMutex.RUnlock()
-	fake.v2GetMutex.RLock()
-	defer fake.v2GetMutex.RUnlock()
-	fake.v2ListMutex.RLock()
-	defer fake.v2ListMutex.RUnlock()
-	fake.v2SetMutex.RLock()
-	defer fake.v2SetMutex.RUnlock()
+	fake.clientMutex.RLock()
+	defer fake.clientMutex.RUnlock()
+	fake.constructSecretsMutex.RLock()
+	defer fake.constructSecretsMutex.RUnlock()
+	fake.writeMutex.RLock()
+	defer fake.writeMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

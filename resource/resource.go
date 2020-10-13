@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
+	sv "github.com/starkandwayne/safe/vault"
 	"github.com/starkandwayne/vault-concourse-resource/vault"
 )
 
@@ -29,7 +30,7 @@ func (r *Resource) configureClient(s Source) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.AuthApprole(s.RoleID, s.SecretID)
+	_, err = c.Client().Client.AuthApprole(s.RoleID, s.SecretID)
 	r.client = c
 
 	return err
@@ -44,35 +45,31 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 	if err != nil {
 		return nil, err
 	}
+
 	err = r.configureClient(s)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: for loop over paths
-	secrets := make([]string, 0)
+
+	secrets := sv.Secrets{}
 	for _, p := range s.Paths {
-		s, err := r.client.List(p)
+		s, err := r.client.ConstructSecrets(p, sv.TreeOpts{
+			FetchKeys: true,
+		})
 		if err != nil {
 			return nil, err
 		}
-		secrets = append(secrets, s...)
+		secrets = secrets.Merge(s)
 	}
 
-	// TODO: iterate over mounts
-	// TODO: deal with v2 vs v1
-	// TODO: recursivly get the values
-	// secrets, err := r.client.List(s.Paths[0])
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// sort.Slice(secrets, func(i, j int) bool {
-	// return credentials.Credentials[i].Name < credentials.Credentials[j].Name
-	// })
-	// raw, err := json.Marshal(secrets)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	secrets.Sort()
 
+	export := make(map[string]*sv.Secret)
+	for _, s := range secrets {
+		export[s.Path] = s.Versions[0].Data
+	}
+
+	raw, err := json.Marshal(&export)
 	newVersion := newVersion(raw, s.URL)
 	if version != nil {
 		oldVersion, err := parseVersion(version)
@@ -85,7 +82,6 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 	}
 
 	return []oc.Version{newVersion.toOCVersion()}, nil
-
 }
 
 // In implements the ofcourse.Resource In method, corresponding to the /opt/resource/in command.
