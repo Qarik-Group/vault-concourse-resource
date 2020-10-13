@@ -4,8 +4,10 @@ package resource
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
 	sv "github.com/starkandwayne/safe/vault"
@@ -88,38 +90,59 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 // This is called when a Concourse job does `get` on the resource.
 func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params, version oc.Version,
 	env oc.Environment, logger *oc.Logger) (oc.Version, oc.Metadata, error) {
-	// Demo of logging. Resources should never use fmt.Printf or anything that writes
-	// to standard output, as it will corrupt the JSON output expected by Concourse.
-	logger.Errorf("This is an error")
-	logger.Warnf("This is a warning")
-	logger.Infof("This is an informational message")
-	logger.Debugf("This is a debug message")
 
-	// Write the `version` argument to a file in the output directory,
-	// so the `Out` function can read it.
-	outputPath := fmt.Sprintf("%s/version", outputDirectory)
-	bytes, err := json.Marshal(version)
+	s, err := parseSource(source)
 	if err != nil {
 		return nil, nil, err
 	}
-	logger.Debugf("Version: %s", string(bytes))
 
-	err = ioutil.WriteFile(outputPath, bytes, 0644)
+	err = r.configureClient(s)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	secrets := sv.Secrets{}
+	for _, p := range s.Paths {
+		s, err := r.client.ConstructSecrets(p, sv.TreeOpts{
+			FetchKeys: true,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		secrets = secrets.Merge(s)
+	}
+
+	secrets.Sort()
+
+	for _, s := range secrets {
+		filePath := filepath.Join(outputDirectory, s.Path)
+		raw, err := s.Versions[0].Data.MarshalJSON()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = os.MkdirAll(path.Dir(filePath), os.ModeDir)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = ioutil.WriteFile(filePath, raw, 0644)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// Metadata consists of arbitrary name/value pairs for display in the Concourse UI,
 	// and may be returned empty if not needed.
 	metadata := oc.Metadata{
-		{
-			Name:  "a",
-			Value: "b",
-		},
-		{
-			Name:  "c",
-			Value: "d",
-		},
+		// {
+		// 	Name:  "a",
+		// 	Value: "b",
+		// },
+		// {
+		// 	Name:  "c",
+		// 	Value: "d",
+		// },
 	}
 
 	// Here, `version` is passed through from the argument. In most cases, it makes sense
@@ -133,26 +156,41 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 // This is called when a Concourse job does a `put` on the resource.
 func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params,
 	env oc.Environment, logger *oc.Logger) (oc.Version, oc.Metadata, error) {
-	// The `Out` function does not receive a `version` argument. Instead, we
-	// will read the version from the file created by the `In` function, assuming
-	// the pipeline does a `get` of this resource. The path to the version file
-	// must be passed in the `put` parameters.
-	versionPath, ok := params["version_path"]
-	if !ok {
-		return nil, nil, ErrParam
-	}
 
-	// The `inputDirectory` argument is a directory containing subdirectories for
-	// all resources retrieved with `get` in a job, as well as all of the job's
-	// task outputs.
-	path := fmt.Sprintf("%s/%s", inputDirectory, versionPath)
-	bytes, err := ioutil.ReadFile(path)
+	s, err := parseSource(source)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var version oc.Version
-	err = json.Unmarshal(bytes, &version)
+	p, err := parseOutParams(params)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = r.configureClient(s)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rootDir := filepath.Join(inputDirectory, p.Path)
+
+	err = filepath.Walk(rootDir,
+		func(path string, info os.FileInfo, err error) error {
+			if info.IsDir() {
+				return nil
+			}
+
+			bytes, err := ioutil.ReadFile(filepath.Join(rootDir, path))
+			if err != nil {
+				return err
+			}
+			secert := sv.NewSecret()
+			err = secert.UnmarshalJSON(bytes)
+			if err != nil {
+				return err
+			}
+			return r.client.Write(path, secert)
+		})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -160,5 +198,5 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	// Both `version` and `metadata` may be empty. In this case, we are returning
 	// `version` retrieved from the file created by `In`, while `metadata` is empty.
 	metadata := oc.Metadata{}
-	return version, metadata, nil
+	return nil, metadata, nil
 }
