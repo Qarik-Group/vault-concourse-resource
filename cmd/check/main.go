@@ -6,7 +6,5 @@ import (
 )
 
 func main() {
-	ofcourse.Check(&resource.Resource{
-		GetClient: resource.GetRealVaultClient,
-	})
+	ofcourse.Check(&resource.Resource{})
 }
