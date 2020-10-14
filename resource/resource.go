@@ -11,7 +11,6 @@ import (
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
 	sv "github.com/starkandwayne/safe/vault"
-	"github.com/starkandwayne/vault-concourse-resource/vault"
 )
 
 var (
@@ -23,19 +22,26 @@ var (
 
 // Resource implements the ofcourse.Resource interface.
 type Resource struct {
-	GetClient func(string) (vault.Client, error)
-	client    vault.Client
+	client *sv.Vault
 }
 
-func (r *Resource) configureClient(s Source) error {
-	c, err := r.GetClient(s.URL)
+func (r *Resource) configureClient(s Source) (err error) {
+	r.client, err = sv.NewVault(sv.VaultConfig{
+		URL:        s.URL,
+		SkipVerify: true,
+		Token:      s.Token,
+	})
 	if err != nil {
 		return err
 	}
-	_, err = c.Client().Client.AuthApprole(s.RoleID, s.SecretID)
-	r.client = c
+	if s.RoleID != "" {
+		_, err = r.client.Client().Client.AuthApprole(s.RoleID, s.SecretID)
+		if err != nil {
+			return err
+		}
+	}
 
-	return err
+	return nil
 }
 
 // Check implements the ofcourse.Resource Check method, corresponding to the /opt/resource/check command.
@@ -121,7 +127,7 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		err = os.MkdirAll(path.Dir(filePath), os.ModeDir)
+		err = os.MkdirAll(path.Dir(filePath), 0775)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -180,7 +186,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 				return nil
 			}
 
-			bytes, err := ioutil.ReadFile(filepath.Join(rootDir, path))
+			bytes, err := ioutil.ReadFile(path)
 			if err != nil {
 				return err
 			}
@@ -189,7 +195,11 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			if err != nil {
 				return err
 			}
-			return r.client.Write(path, secert)
+			secretPath, err := filepath.Rel(rootDir, path)
+			if err != nil {
+				return err
+			}
+			return r.client.Write(secretPath, secert)
 		})
 	if err != nil {
 		return nil, nil, err

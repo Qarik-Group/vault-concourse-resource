@@ -12,4 +12,5 @@ require (
 	github.com/onsi/gomega v1.10.2
 	github.com/starkandwayne/safe v1.5.8
 	github.com/stretchr/testify v1.6.1
+	gopkg.in/yaml.v2 v2.3.0
 )

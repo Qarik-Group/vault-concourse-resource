@@ -16,6 +16,7 @@ type OutParams struct {
 
 type Source struct {
 	URL      string   `mapstructure:"url"`
+	Token    string   `mapstructure:"token"`
 	RoleID   string   `mapstructure:"role_id"`
 	SecretID string   `mapstructure:"secret_id"`
 	CaCert   string   `mapstructure:"ca_cert,omitempty"`
@@ -29,7 +30,7 @@ type Version struct {
 
 func validateField(field, value string) error {
 	if value == "" {
-		return fmt.Errorf("Missing %s field is", field)
+		return fmt.Errorf("Missing %s field", field)
 	}
 
 	return nil
@@ -51,11 +52,17 @@ func parseSource(s oc.Source) (Source, error) {
 	if err := validateField("url", result.URL); err != nil {
 		return Source{}, err
 	}
-	if err := validateField("role_id", result.RoleID); err != nil {
-		return Source{}, err
-	}
-	if err := validateField("secret_id", result.SecretID); err != nil {
-		return Source{}, err
+	if result.RoleID != "" { // TODO: handle case when only secretid is set
+		if err := validateField("role_id", result.RoleID); err != nil {
+			return Source{}, err
+		}
+		if err := validateField("secret_id", result.SecretID); err != nil {
+			return Source{}, err
+		}
+	} else {
+		if err := validateField("token", result.Token); err != nil {
+			return Source{}, err
+		}
 	}
 	// if err := validateField("paths", result.Paths); err != nil {
 	// 	return Source{}, err

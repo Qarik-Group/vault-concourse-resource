@@ -1,69 +1,135 @@
 package resource_test
 
 import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
+
 	oc "github.com/cloudboss/ofcourse/ofcourse"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/starkandwayne/vault-concourse-resource/resource"
-	"github.com/starkandwayne/vault-concourse-resource/vault"
-	"github.com/starkandwayne/vault-concourse-resource/vault/vaultfakes"
+	"gopkg.in/yaml.v2"
 )
+
+func safe(home string, args ...string) *exec.Cmd {
+	cmd := exec.Command("safe", args...)
+	cmd.Stdout = GinkgoWriter
+	cmd.Stderr = GinkgoWriter
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("HOME=%s", home),
+	)
+	return cmd
+}
+
+func getCurrentVaultTarget(home string) (string, string) {
+	config := struct {
+		Current string                       `yaml:"current"`
+		Vaults  map[string]map[string]string `yaml:"vaults"`
+	}{}
+	raw, err := ioutil.ReadFile(filepath.Join(home, ".saferc"))
+	Expect(err).ToNot(HaveOccurred())
+	err = yaml.Unmarshal(raw, &config)
+	Expect(err).ToNot(HaveOccurred())
+	return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
+}
 
 var _ = Describe("Resource", func() {
 	var (
-		r          *resource.Resource
-		c          *vaultfakes.FakeClient
+		vault      *exec.Cmd
+		home       string
+		r          = &resource.Resource{}
 		url        string
-		testLogger = oc.NewLogger(oc.SilentLevel) // TODO: ginko writer logger? https://onsi.github.io/ginkgo/#logging-output
+		token      string
 		env        = oc.NewEnvironment()
+		testLogger = oc.NewLogger(oc.SilentLevel) // TODO: cannot use ginkgo.GinkgoWriter (type io.Writer) as type *ofcourse.Logger ginko writer logger? https://onsi.github.io/ginkgo/#logging-output
 	)
+
 	BeforeEach(func() {
-		c = &vaultfakes.FakeClient{}
-		r = &resource.Resource{
-			GetClient: func(u string) (vault.Client, error) {
-				Expect(u).To(Equal(url))
-				return c, nil
-			},
-		}
+		var err error
+		home, err = ioutil.TempDir("", "vault-concourse-home")
+		Expect(err).ToNot(HaveOccurred())
+		vault = safe(home, "local", "--memory")
+		err = vault.Start()
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(func() int {
+			s := safe(home, "get", "secret/handshake")
+			s.Run()
+			return s.ProcessState.ExitCode()
+		}, "5s", "500ms").Should(Equal(0))
+		url, token = getCurrentVaultTarget(home)
 	})
 	Describe("Check", func() {
-		Context("given url, roleid, sercretid", func() {
-			It("configures vault client using AuthAppRole", func() {
-				c.ListReturnsOnCall(0, []string{"/secret/testpath/secret1", "/secret/testpath/secret2"}, nil)
-				c.ListReturnsOnCall(1, []string{"/secret/otherpath/secret3", "/secret/otherpath/secret/4"}, nil)
-				url = "http://test.vault"
+		Context("given a vault with secrets", func() {
+			It("should check version", func() {
 				response, err := r.Check(oc.Source{
-					"url":       "http://test.vault",
-					"role_id":   "test_role_id",
-					"secret_id": "test_secret_id",
+					"url":   url,
+					"token": token,
 					"paths": []string{
-						"/secret/testpath",
-						"/secret/otherpath",
+						"/secret/handshake",
 					},
 				}, oc.Version{}, env, testLogger)
 				Expect(err).ToNot(HaveOccurred())
-				roleID, secretID := c.AuthApproleArgsForCall(0)
-				Expect(roleID).To(Equal("test_role_id"))
-				Expect(secretID).To(Equal("test_secret_id"))
 				Expect(response).To(Equal([]oc.Version{
 					{
-						"secret_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd8070",
-						"url":         "http://test.vault",
+						"secret_sha1": "775fb98067bd6a203dc835a1dcf2f7169f43e372",
+						"url":         "http://127.0.0.1:8201",
 					},
 				}))
 			})
 		})
-		Context("when url, roleid, secretid is missing", func() {
-			It("configures vault client using AuthAppRole", func() {
-				_, err := r.Check(oc.Source{
-					"url": "http://test.vault",
+	})
+	Describe("In", func() {
+		Context("given a vault with secrets", func() {
+			It("should export secrets to directory", func() {
+				outDir := filepath.Join(home, "out")
+				_, _, err := r.In(outDir, oc.Source{
+					"url":   url,
+					"token": token,
 					"paths": []string{
-						"/secret/testpath",
-						"/secreat/testpath/1",
+						"/secret/handshake",
 					},
-				}, oc.Version{}, env, testLogger)
-				Expect(err).To(HaveOccurred())
+				}, oc.Params{}, oc.Version{}, env, testLogger)
+				Expect(err).ToNot(HaveOccurred())
+				result, err := ioutil.ReadFile(filepath.Join(outDir, "secret/handshake"))
+				Expect(string(result)).To(Equal(`{"knock":"knock"}`))
 			})
 		})
+	})
+	Describe("Out", func() {
+		Context("given a vault with secrets", func() {
+			It("should import secrets from directory", func() {
+				inDir := filepath.Join(home, "in")
+				secretDir := filepath.Join(inDir, "root/secret")
+				err := os.MkdirAll(secretDir, 0775)
+				Expect(err).ToNot(HaveOccurred())
+				ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(`{"ping":"pong"}`), 0644)
+				_, _, err = r.Out(inDir, oc.Source{
+					"url":   url,
+					"token": token,
+					"paths": []string{
+						"/secret/handshake",
+					},
+				}, oc.Params{
+					"path": "root",
+				}, env, testLogger)
+				Expect(err).ToNot(HaveOccurred())
+				s := safe(home, "get", "/secret/othersecrets:ping")
+				s.Stdout = nil
+				result, err := s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("pong\n"))
+			})
+		})
+	})
+
+	AfterEach(func() {
+		syscall.Kill(-vault.Process.Pid, syscall.SIGKILL)
+		os.RemoveAll(home)
 	})
 })
