@@ -4,11 +4,15 @@ Write a description of the resource here.
 
 ## Source Configuration
 
-* `a`: *Required.* This is a required setting.
+* `url`: *Required.* The URL of the vault you want to target.
+* `role_id`: *Required.* The RoleID of the vault you are targeting.
+* `secret_id`: *Required.* The SecretID of the vault you are targeting.
+* `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
+* `paths`: *Required.* The Secret paths you want to check.
 
-* `b`: *Optional.* This is an optional setting.
+## Out Params
+*  `path`: *Required.* The directory from the exported secrets from the IN step
 
-* `c`: *Optional. Default `true`* This is an optional setting with a default value.
 
 ### Example
 
@@ -33,34 +37,44 @@ jobs:
     trigger: true
   - put: vault-concourse-resource
     params:
-      version_path: vault-concourse-resource/version
+      url: http://my.vault
+      role_id: myroleid
+      secret_id: mysecretid
+      paths:
+        - /secret/handshake
 ```
 
 ## Behavior
 
 ### `check`: Check for something
 
-Write a description of what is checked here.
+Checks the paths and its secrets and creates a shasum
+if secret(s) has changed the shasum will change
 
 ### `in`: Fetch something
 
-Write a description of what is fetched here.
+Fetch all secrets recursivly assigned from provided paths
+and puts them in a directory
 
 #### Parameters
 
-* `a`: *Required.* This is a required parameter.
-
-* `b`: *Optional.* This is an optional parameter.
+* `url`: *Required.* The URL of the vault you want to target.
+* `role_id`: *Required.* The RoleID of the vault you are targeting.
+* `secret_id`: *Required.* The SecretID of the vault you are targeting.
+* `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
+* `paths`: *Required.* The Secret paths you want to check.
 
 ### `out`: Put something somewhere
 
-Write a description of what is being put somewhere.
+Import all secrets from a directory `path` to assigend vault
 
 #### Parameters
 
-* `a`: *Required.* This is a required parameter.
-
-* `b`: *Optional. Default `true`* This is an optional parameter with a default value.
+* `url`: *Required.* The URL of the vault you want to target.
+* `role_id`: *Required.* The RoleID of the vault you are targeting.
+* `secret_id`: *Required.* The SecretID of the vault you are targeting.
+* `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
+* `path`: *Required.* The directory from the exported secrets from the IN step
 
 ## Development
 
