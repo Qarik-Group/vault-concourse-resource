@@ -10,11 +10,28 @@ Write a description of the resource here.
 * `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
 * `paths`: *Required.* The Secret paths you want to check.
 
-## Out Params
-*  `path`: *Required.* The directory from the exported secrets from the IN step
+## Behavior
 
+### `check`: Check for something
 
-### Example
+Checks the paths and its secrets and creates a shasum
+if secret(s) has changed the shasum will change
+
+### `in`: Fetch something
+
+Fetch all secrets recursivly assigned from provided paths
+and puts them in a directory
+
+### `out`: Put something somewhere
+
+Import all secrets from a directory `path` to assigend vault
+
+#### Parameters
+
+* `path`: *Required.* The directory from the exported secrets from the IN step
+* `prefix`: *Optional.* Prefix to use for the output path in vault.
+
+## Example
 
 ```yaml
 resource_types:
@@ -29,6 +46,12 @@ resources:
   check_every: 5m
   source:
     log_level: debug
+	url: http://my.vault
+	role_id: myroleid
+	secret_id: mysecretid
+	# new version if something under these paths chagnes
+	paths:
+	- /secret/handshake	
 
 jobs:
 - name: do-it
@@ -37,50 +60,16 @@ jobs:
     trigger: true
   - put: vault-concourse-resource
     params:
-      url: http://my.vault
-      role_id: myroleid
-      secret_id: mysecretid
-      paths:
-        - /secret/handshake
+	  path: vault-concourse-resource/secret
+	  prefix: secret2
+
 ```
-
-## Behavior
-
-### `check`: Check for something
-
-Checks the paths and its secrets and creates a shasum
-if secret(s) has changed the shasum will change
-
-### `in`: Fetch something
-
-Fetch all secrets recursivly assigned from provided paths
-and puts them in a directory
-
-#### Parameters
-
-* `url`: *Required.* The URL of the vault you want to target.
-* `role_id`: *Required.* The RoleID of the vault you are targeting.
-* `secret_id`: *Required.* The SecretID of the vault you are targeting.
-* `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
-* `paths`: *Required.* The Secret paths you want to check.
-
-### `out`: Put something somewhere
-
-Import all secrets from a directory `path` to assigend vault
-
-#### Parameters
-
-* `url`: *Required.* The URL of the vault you want to target.
-* `role_id`: *Required.* The RoleID of the vault you are targeting.
-* `secret_id`: *Required.* The SecretID of the vault you are targeting.
-* `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
-* `path`: *Required.* The directory from the exported secrets from the IN step
 
 ## Development
 
 ### Prerequisites
 
-* golang is *required* - version 1.11.x or higher is required.
+* golang is *required* - version 1.15.x or higher is required.
 * docker is *required* - version 17.05.x or higher is required.
 * make is *required* - version 4.1 of GNU make is tested.
 
