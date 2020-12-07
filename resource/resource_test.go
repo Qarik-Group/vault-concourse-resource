@@ -116,7 +116,8 @@ var _ = Describe("Resource", func() {
 						"/secret/handshake",
 					},
 				}, oc.Params{
-					"path": "root",
+					"path":   "root/secret",
+					"prefix": "secret",
 				}, env, testLogger)
 				Expect(err).ToNot(HaveOccurred())
 				s := safe(home, "get", "/secret/othersecrets:ping")

@@ -11,7 +11,8 @@ import (
 
 // Recursivly read all files from path and write to vault
 type OutParams struct {
-	Path string `mapstructure:"path"`
+	Path   string `mapstructure:"path"`
+	Prefix string `mapstructure:"prefix"`
 }
 
 type Source struct {

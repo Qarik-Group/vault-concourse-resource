@@ -199,7 +199,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			if err != nil {
 				return err
 			}
-			return r.client.Write(secretPath, secert)
+			return r.client.Write(filepath.Join(p.Prefix, secretPath), secert)
 		})
 	if err != nil {
 		return nil, nil, err
