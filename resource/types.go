@@ -28,8 +28,8 @@ type Version struct {
 	URL        string `mapstructure:"url"`
 }
 
-func validateField(field, value string) error {
-	if value == "" {
+func validateField(field string, values ...string) error {
+	if len(values) == 0 || values[0] == "" {
 		return fmt.Errorf("Missing %s field", field)
 	}
 
@@ -64,9 +64,9 @@ func parseSource(s oc.Source) (Source, error) {
 			return Source{}, err
 		}
 	}
-	// if err := validateField("paths", result.Paths); err != nil {
-	// 	return Source{}, err
-	// }
+	if err := validateField("paths", result.Paths...); err != nil {
+		return Source{}, err
+	}
 
 	return result, err
 }
