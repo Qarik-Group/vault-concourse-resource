@@ -46,12 +46,12 @@ resources:
   check_every: 5m
   source:
     log_level: debug
-	url: http://my.vault
-	role_id: myroleid
-	secret_id: mysecretid
-	# new version if something under these paths chagnes
-	paths:
-	- /secret/handshake	
+    url: http://my.vault
+    role_id: myroleid
+    secret_id: mysecretid
+    # new version if something under these paths chagnes
+    paths:
+    - /secret/handshake 
 
 jobs:
 - name: do-it
@@ -60,8 +60,8 @@ jobs:
     trigger: true
   - put: vault-concourse-resource
     params:
-	  path: vault-concourse-resource/secret
-	  prefix: secret2
+      path: vault-concourse-resource/secret
+      prefix: secret2
 
 ```
 
