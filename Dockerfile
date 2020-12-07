@@ -1,4 +1,4 @@
-FROM golang:1.12.7 as builder
+FROM golang:1.15 as builder
 
 RUN apt-get update \
     && apt-get install -yy wget gnupg \
@@ -17,7 +17,7 @@ RUN unset GOPATH && \
     go test -v ./... && \
     go install ./...
 
-FROM golang:1.12.7
+FROM golang:1.15
 
 RUN mkdir -p /opt/resource
 
