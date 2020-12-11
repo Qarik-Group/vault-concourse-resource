@@ -30,6 +30,7 @@ func (r *Resource) configureClient(s Source) (err error) {
 		URL:        s.URL,
 		SkipVerify: true,
 		Token:      s.Token,
+		Namespace:  s.Namespace,
 	})
 	if err != nil {
 		return err

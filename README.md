@@ -8,6 +8,7 @@ Write a description of the resource here.
 * `role_id`: *Required.* The RoleID of the vault you are targeting.
 * `secret_id`: *Required.* The SecretID of the vault you are targeting.
 * `ca_cert`: *Optional.* The CA Certificate of the vault you are targeting.
+* `namespace`: *Optional.* Vault Enterprise Namespace to target.
 * `paths`: *Required.* The Secret paths you want to check.
 
 ## Behavior
@@ -24,7 +25,7 @@ and puts them in a directory
 
 ### `out`: Put something somewhere
 
-Import all secrets from a directory `path` to assigend vault
+Import all secrets from a directory `path` to assigned vault
 
 #### Parameters
 
@@ -49,7 +50,7 @@ resources:
     url: http://my.vault
     role_id: myroleid
     secret_id: mysecretid
-    # new version if something under these paths chagnes
+    # new version if something under these paths changes
     paths:
     - /secret/handshake 
 

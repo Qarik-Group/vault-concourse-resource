@@ -16,12 +16,13 @@ type OutParams struct {
 }
 
 type Source struct {
-	URL      string   `mapstructure:"url"`
-	Token    string   `mapstructure:"token"`
-	RoleID   string   `mapstructure:"role_id"`
-	SecretID string   `mapstructure:"secret_id"`
-	CaCert   string   `mapstructure:"ca_cert,omitempty"`
-	Paths    []string `mapstructure:"paths"`
+	URL       string   `mapstructure:"url"`
+	Token     string   `mapstructure:"token"`
+	RoleID    string   `mapstructure:"role_id"`
+	SecretID  string   `mapstructure:"secret_id"`
+	CaCert    string   `mapstructure:"ca_cert,omitempty"`
+	Namespace string   `mapstructure:"namespace"`
+	Paths     []string `mapstructure:"paths"`
 }
 
 type Version struct {
