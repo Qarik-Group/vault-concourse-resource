@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
 	sv "github.com/starkandwayne/safe/vault"
@@ -191,8 +192,10 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			if err != nil {
 				return err
 			}
-			secert := sv.NewSecret()
-			err = secert.UnmarshalJSON(bytes)
+
+			oldSecret := sv.NewSecret()
+			err = oldSecret.UnmarshalJSON(bytes)
+
 			if err != nil {
 				return err
 			}
@@ -200,7 +203,13 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			if err != nil {
 				return err
 			}
-			return r.client.Write(filepath.Join(p.Prefix, secretPath), secert)
+
+			newSecret, err := filterAndRenameKeys(oldSecret, p.KeysToCopy, p.NewKeyNames)
+			if err != nil {
+				return err
+			}
+
+			return r.client.Write(filepath.Join(p.Prefix, secretPath), newSecret)
 		})
 	if err != nil {
 		return nil, nil, err
@@ -210,4 +219,45 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	// `version` retrieved from the file created by `In`, while `metadata` is empty.
 	metadata := oc.Metadata{}
 	return nil, metadata, nil
+}
+
+//  Filters out any keys that are not included in keysToCopyString and renames
+// each key to the value in it's corresponding position in newKeyNamesString.
+// newKeyNamesString, The original key names are retained if newKeyNamesString
+// is not specified.
+// 	secret: The existing secret
+//		keysToCopyString: A comma separated string of keys to be copied. If empty,
+//			all keys are copied.
+//		newKeyNames: A comma separated string of new names for the keys in
+//			keysToCopyString. Must have the same number of elements as
+//			keysToCopyString.
+func filterAndRenameKeys(secret *sv.Secret, keysToCopyString string, newKeyNamesString string) (*sv.Secret, error) {
+
+	// if no keys are specified, use them all
+	if keysToCopyString == "" {
+		return secret, nil
+	}
+
+	rename := newKeyNamesString != ""
+	keysToCopy := strings.Split(strings.ReplaceAll(keysToCopyString, " ", ""), ",")
+	newKeyNames := strings.Split(strings.ReplaceAll(newKeyNamesString, " ", ""), ",")
+
+	if (len(newKeyNamesString) > 0) && (len(keysToCopy) != len(newKeyNames)) {
+		return nil, errors.New("keys_to_copy and new_key_names must have the same number of values")
+	}
+
+	filteredSecret := sv.NewSecret()
+
+	var newKey string
+	for i, oldKey := range keysToCopy {
+		v := secret.Get(oldKey)
+		if rename {
+			newKey = newKeyNames[i]
+		} else {
+			newKey = oldKey
+		}
+		filteredSecret.Set(newKey, v, false)
+	}
+
+	return filteredSecret, nil
 }

@@ -49,6 +49,28 @@ var _ = Describe("Resource", func() {
 		testLogger = oc.NewLogger(oc.SilentLevel) // TODO: cannot use ginkgo.GinkgoWriter (type io.Writer) as type *ofcourse.Logger ginko writer logger? https://onsi.github.io/ginkgo/#logging-output
 	)
 
+	createSecretsAndCallOutFunction := func(secretsBytes string, params oc.Params) error {
+		inDir := filepath.Join(home, "in")
+		secretDir := filepath.Join(inDir, "root/secret")
+		err := os.MkdirAll(secretDir, 0775)
+		Expect(err).ToNot(HaveOccurred())
+		ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(secretsBytes), 0644)
+		_, _, err = r.Out(inDir, oc.Source{
+			"url":   url,
+			"token": token,
+			"paths": []string{
+				"/secret/handshake",
+			},
+		}, params, env, testLogger)
+		return err
+	}
+
+	safeGet := func(keyWithPath string) ([]byte, error) {
+		s := safe(home, "get", keyWithPath)
+		s.Stdout = nil
+		return s.Output()
+	}
+
 	BeforeEach(func() {
 		var err error
 		home, err = ioutil.TempDir("", "vault-concourse-home")
@@ -103,28 +125,100 @@ var _ = Describe("Resource", func() {
 	})
 	Describe("Out", func() {
 		Context("given a vault with secrets", func() {
-			It("should import secrets from directory", func() {
-				inDir := filepath.Join(home, "in")
-				secretDir := filepath.Join(inDir, "root/secret")
-				err := os.MkdirAll(secretDir, 0775)
+			It("should import all secrets from directory and retain original key names", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "this":"that", "ying":"yang"}`,
+					oc.Params{
+						"path":   "root/secret",
+						"prefix": "secret",
+					})
 				Expect(err).ToNot(HaveOccurred())
-				ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(`{"ping":"pong"}`), 0644)
-				_, _, err = r.Out(inDir, oc.Source{
-					"url":   url,
-					"token": token,
-					"paths": []string{
-						"/secret/handshake",
-					},
-				}, oc.Params{
-					"path":   "root/secret",
-					"prefix": "secret",
-				}, env, testLogger)
+				result, err := safeGet("/secret/othersecrets:ping")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("pong\n"))
+				result, err = safeGet("/secret/othersecrets:this")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("that\n"))
+				result, err = safeGet("/secret/othersecrets:ying")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("yang\n"))
+			})
+			It("should import only specified secrets from directory and name them appropriately", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "this":"that", "ying":"yang"}`,
+					oc.Params{
+						"path":          "root/secret",
+						"prefix":        "secret",
+						"keys_to_copy":  "ping, ying",
+						"new_key_names": "ping, yingling",
+					})
 				Expect(err).ToNot(HaveOccurred())
 				s := safe(home, "get", "/secret/othersecrets:ping")
 				s.Stdout = nil
 				result, err := s.Output()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(string(result)).To(Equal("pong\n"))
+				s = safe(home, "get", "/secret/othersecrets:yingling")
+				s.Stdout = nil
+				result, err = s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("yang\n"))
+				s = safe(home, "get", "/secret/othersecrets:this")
+				s.Stdout = nil
+				result, err = s.Output()
+				Expect(err).To(HaveOccurred())
+			})
+			It("should import specified secrets from directory and retain the original key names", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "ying":"yang"}`,
+					oc.Params{
+						"path":         "root/secret",
+						"prefix":       "secret",
+						"keys_to_copy": "ping,ying",
+					})
+				Expect(err).ToNot(HaveOccurred())
+				s := safe(home, "get", "/secret/othersecrets:ping")
+				s.Stdout = nil
+				result, err := s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("pong\n"))
+				s = safe(home, "get", "/secret/othersecrets:ying")
+				s.Stdout = nil
+				result, err = s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("yang\n"))
+			})
+			It("should ignore new_key_names if keys_to_copy is not specified", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "ying":"yang"}`,
+					oc.Params{
+						"path":          "root/secret",
+						"prefix":        "secret",
+						"new_key_names": "ping,yingling",
+					})
+				Expect(err).ToNot(HaveOccurred())
+				s := safe(home, "get", "/secret/othersecrets:ping")
+				s.Stdout = nil
+				result, err := s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("pong\n"))
+				s = safe(home, "get", "/secret/othersecrets:ying")
+				s.Stdout = nil
+				result, err = s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("yang\n"))
+			})
+			It("should fail gracefully if keys_to_copy and new_key_names have a different number of values", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "ying":"yang"}`,
+					oc.Params{
+						"path":          "root/secret",
+						"prefix":        "secret",
+						"keys_to_copy":  "ping,ying",
+						"new_key_names": "thing",
+					})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and new_key_names must have the same number of values"))
 			})
 		})
 	})
