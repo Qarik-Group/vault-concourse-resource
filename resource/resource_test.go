@@ -147,10 +147,16 @@ var _ = Describe("Resource", func() {
 				err := createSecretsAndCallOutFunction(
 					`{"ping":"pong", "this":"that", "ying":"yang"}`,
 					oc.Params{
-						"path":          "root/secret",
-						"prefix":        "secret",
-						"keys_to_copy":  "ping, ying",
-						"new_key_names": "ping, yingling",
+						"path":   "root/secret",
+						"prefix": "secret",
+						"keys_to_copy": []string{
+							"ping",
+							"ying",
+						},
+						"renamed_to": []string{
+							"ping",
+							"yingling",
+						},
 					})
 				Expect(err).ToNot(HaveOccurred())
 				s := safe(home, "get", "/secret/othersecrets:ping")
@@ -172,9 +178,12 @@ var _ = Describe("Resource", func() {
 				err := createSecretsAndCallOutFunction(
 					`{"ping":"pong", "ying":"yang"}`,
 					oc.Params{
-						"path":         "root/secret",
-						"prefix":       "secret",
-						"keys_to_copy": "ping,ying",
+						"path":   "root/secret",
+						"prefix": "secret",
+						"keys_to_copy": []string{
+							"ping",
+							"ying",
+						},
 					})
 				Expect(err).ToNot(HaveOccurred())
 				s := safe(home, "get", "/secret/othersecrets:ping")
@@ -188,13 +197,16 @@ var _ = Describe("Resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(string(result)).To(Equal("yang\n"))
 			})
-			It("should ignore new_key_names if keys_to_copy is not specified", func() {
+			It("should ignore renamed_to if keys_to_copy is not specified", func() {
 				err := createSecretsAndCallOutFunction(
 					`{"ping":"pong", "ying":"yang"}`,
 					oc.Params{
-						"path":          "root/secret",
-						"prefix":        "secret",
-						"new_key_names": "ping,yingling",
+						"path":   "root/secret",
+						"prefix": "secret",
+						"renamed_to": []string{
+							"ping",
+							"yingling",
+						},
 					})
 				Expect(err).ToNot(HaveOccurred())
 				s := safe(home, "get", "/secret/othersecrets:ping")
@@ -208,17 +220,36 @@ var _ = Describe("Resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(string(result)).To(Equal("yang\n"))
 			})
-			It("should fail gracefully if keys_to_copy and new_key_names have a different number of values", func() {
+			It("should fail gracefully if keys_to_copy and renamed_to have a different number of values", func() {
 				err := createSecretsAndCallOutFunction(
 					`{"ping":"pong", "ying":"yang"}`,
 					oc.Params{
-						"path":          "root/secret",
-						"prefix":        "secret",
-						"keys_to_copy":  "ping,ying",
-						"new_key_names": "thing",
+						"path":   "root/secret",
+						"prefix": "secret",
+						"keys_to_copy": []string{
+							"ping",
+							"ying",
+						},
+						"renamed_to": []string{
+							"thing",
+						},
 					})
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and new_key_names must have the same number of values"))
+				Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and renamed_to must have the same number of values"))
+			})
+			It("should fail gracefully if keys_to_copy contains a key that doesn't exist", func() {
+				err := createSecretsAndCallOutFunction(
+					`{"ping":"pong", "ying":"yang"}`,
+					oc.Params{
+						"path":   "root/secret",
+						"prefix": "secret",
+						"keys_to_copy": []string{
+							"ping",
+							"sing",
+						},
+					})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(BeEquivalentTo("sing not found"))
 			})
 		})
 	})

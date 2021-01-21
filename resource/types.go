@@ -11,10 +11,10 @@ import (
 
 // Recursivly read all files from path and write to vault
 type OutParams struct {
-	Path        string `mapstructure:"path"`
-	Prefix      string `mapstructure:"prefix"`
-	KeysToCopy  string `mapstructure:"keys_to_copy"`
-	NewKeyNames string `mapstructure:"new_key_names"`
+	Path       string   `mapstructure:"path"`
+	Prefix     string   `mapstructure:"prefix"`
+	KeysToCopy []string `mapstructure:"keys_to_copy"`
+	RenamedTo  []string `mapstructure:"renamed_to"`
 }
 
 type Source struct {

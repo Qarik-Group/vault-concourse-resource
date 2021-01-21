@@ -4,6 +4,7 @@ package resource
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -204,7 +205,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 				return err
 			}
 
-			newSecret, err := filterAndRenameKeys(oldSecret, p.KeysToCopy, p.NewKeyNames)
+			newSecret, err := filterAndRenameKeys(oldSecret, p.KeysToCopy, p.RenamedTo)
 			if err != nil {
 				return err
 			}
@@ -231,33 +232,64 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 //		newKeyNames: A comma separated string of new names for the keys in
 //			keysToCopyString. Must have the same number of elements as
 //			keysToCopyString.
-func filterAndRenameKeys(secret *sv.Secret, keysToCopyString string, newKeyNamesString string) (*sv.Secret, error) {
+func filterAndRenameKeys(secret *sv.Secret, keysToCopy []string, renamedTo []string) (*sv.Secret, error) {
 
 	// if no keys are specified, use them all
-	if keysToCopyString == "" {
+	if len(keysToCopy) == 0 {
 		return secret, nil
 	}
 
-	rename := newKeyNamesString != ""
-	keysToCopy := strings.Split(strings.ReplaceAll(keysToCopyString, " ", ""), ",")
-	newKeyNames := strings.Split(strings.ReplaceAll(newKeyNamesString, " ", ""), ",")
+	err := vaildate(secret, keysToCopy, renamedTo)
+	if err != nil {
+		return nil, err
+	}
 
-	if (len(newKeyNamesString) > 0) && (len(keysToCopy) != len(newKeyNames)) {
-		return nil, errors.New("keys_to_copy and new_key_names must have the same number of values")
+	finalKeyNames := keysToCopy
+	if len(renamedTo) != 0 {
+		finalKeyNames = renamedTo
 	}
 
 	filteredSecret := sv.NewSecret()
 
-	var newKey string
 	for i, oldKey := range keysToCopy {
 		v := secret.Get(oldKey)
-		if rename {
-			newKey = newKeyNames[i]
-		} else {
-			newKey = oldKey
-		}
-		filteredSecret.Set(newKey, v, false)
+		filteredSecret.Set(finalKeyNames[i], v, false)
 	}
 
 	return filteredSecret, nil
+}
+
+func vaildate(secret *sv.Secret, keysToCopy []string, renamedTo []string) error {
+
+	err := keysToCopyAndRenamedToHaveTheSameLength(renamedTo, keysToCopy)
+	if err != nil {
+		return err
+	}
+
+	err = keysToCopyContainsNoMissingKeys(secret, keysToCopy)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func keysToCopyContainsNoMissingKeys(secret *sv.Secret, keysToCopy []string) error {
+	missingKeys := []string{}
+	for _, key := range keysToCopy {
+		if !secret.Has(key) {
+			missingKeys = append(missingKeys, key)
+		}
+	}
+	if len(missingKeys) > 0 {
+		return errors.New(fmt.Sprintf("%s not found", strings.Join(missingKeys, ",")))
+	}
+	return nil
+}
+
+func keysToCopyAndRenamedToHaveTheSameLength(renamedTo []string, keysToCopy []string) error {
+	if (len(renamedTo) > 0) && (len(keysToCopy) != len(renamedTo)) {
+		return errors.New("keys_to_copy and renamed_to must have the same number of values")
+	}
+	return nil
 }
