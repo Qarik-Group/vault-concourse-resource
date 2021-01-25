@@ -63,6 +63,8 @@ var _ = Describe("Resource", func() {
 		testLogger = oc.NewLogger(oc.SilentLevel) // TODO: cannot use ginkgo.GinkgoWriter (type io.Writer) as type *ofcourse.Logger ginko writer logger? https://onsi.github.io/ginkgo/#logging-output
 	)
 
+	const othersecretsPath = "/secret/othersecrets:"
+
 	createSecretsAndCallOutFunction := func(secretsBytes string, params oc.Params) error {
 		inDir := filepath.Join(home, "in")
 		secretDir := filepath.Join(inDir, "root/secret")
@@ -83,6 +85,14 @@ var _ = Describe("Resource", func() {
 		s := safe(home, "get", keyWithPath)
 		s.Stdout = nil
 		return s.Output()
+	}
+
+	vaultPathContainsExpectedKeysAndValues := func(expected map[string]string) {
+		for key, value := range expected {
+			result, err := safeGet(othersecretsPath + key)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(result)).To(Equal(value + "\n"))
+		}
 	}
 
 	BeforeEach(func() {
@@ -139,7 +149,6 @@ var _ = Describe("Resource", func() {
 	})
 	Describe("Out", func() {
 		const secretsBytes = `{"ping":"pong", "this":"that", "ying":"yang"}`
-		const othersecretsPath = "/secret/othersecrets:"
 		Context("given a vault with secrets", func() {
 			It("should import all secrets from directory and retain original key names", func() {
 				err := createSecretsAndCallOutFunction(
@@ -147,13 +156,7 @@ var _ = Describe("Resource", func() {
 					ocParams(nil, nil),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				//TODO extract this to a method:
-				expected := map[string]string{"ping": "pong", "this": "that", "ying": "yang"}
-				for key, value := range expected {
-					result, err := safeGet(othersecretsPath + key)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(string(result)).To(Equal(value + "\n"))
-				}
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
 			It("should import only specified secrets from directory and name them appropriately", func() {
 				err := createSecretsAndCallOutFunction(
@@ -161,12 +164,7 @@ var _ = Describe("Resource", func() {
 					ocParams([]string{"ping", "ying"}, []string{"ping", "yingling"}),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				expected := map[string]string{"ping": "pong", "yingling": "yang"}
-				for key, value := range expected {
-					result, err := safeGet(othersecretsPath + key)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(string(result)).To(Equal(value + "\n"))
-				}
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
 				_, err = safeGet(othersecretsPath + "this")
 				Expect(err).To(HaveOccurred())
 			})
@@ -176,12 +174,7 @@ var _ = Describe("Resource", func() {
 					ocParams([]string{"ping", "ying"}, nil),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				expected := map[string]string{"ping": "pong", "ying": "yang"}
-				for key, value := range expected {
-					result, err := safeGet(othersecretsPath + key)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(string(result)).To(Equal(value + "\n"))
-				}
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "ying": "yang"})
 			})
 			It("should ignore renamed_to if keys_to_copy is not specified", func() {
 				err := createSecretsAndCallOutFunction(
@@ -189,12 +182,7 @@ var _ = Describe("Resource", func() {
 					ocParams(nil, []string{"ping", "yingling"}),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				expected := map[string]string{"ping": "pong", "ying": "yang"}
-				for key, value := range expected {
-					result, err := safeGet(othersecretsPath + key)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(string(result)).To(Equal(value + "\n"))
-				}
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "ying": "yang"})
 			})
 			It("should fail gracefully if keys_to_copy and renamed_to have a different number of values", func() {
 				err := createSecretsAndCallOutFunction(
