@@ -38,6 +38,20 @@ func getCurrentVaultTarget(home string) (string, string) {
 	return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
 }
 
+func ocParams(keys []string, rename []string) oc.Params {
+	params := oc.Params{
+		"path":   "root/secret",
+		"prefix": "secret",
+	}
+	if keys != nil {
+		params["keys_to_copy"] = keys
+	}
+	if rename != nil {
+		params["renamed_to"] = rename
+	}
+	return params
+}
+
 var _ = Describe("Resource", func() {
 	var (
 		vault      *exec.Cmd
@@ -124,130 +138,77 @@ var _ = Describe("Resource", func() {
 		})
 	})
 	Describe("Out", func() {
+		const secretsBytes = `{"ping":"pong", "this":"that", "ying":"yang"}`
+		const othersecretsPath = "/secret/othersecrets:"
 		Context("given a vault with secrets", func() {
 			It("should import all secrets from directory and retain original key names", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "this":"that", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-					})
+					secretsBytes,
+					ocParams(nil, nil),
+				)
 				Expect(err).ToNot(HaveOccurred())
-				result, err := safeGet("/secret/othersecrets:ping")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("pong\n"))
-				result, err = safeGet("/secret/othersecrets:this")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("that\n"))
-				result, err = safeGet("/secret/othersecrets:ying")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("yang\n"))
+				//TODO extract this to a method:
+				expected := map[string]string{"ping": "pong", "this": "that", "ying": "yang"}
+				for key, value := range expected {
+					result, err := safeGet(othersecretsPath + key)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(string(result)).To(Equal(value + "\n"))
+				}
 			})
 			It("should import only specified secrets from directory and name them appropriately", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "this":"that", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-						"keys_to_copy": []string{
-							"ping",
-							"ying",
-						},
-						"renamed_to": []string{
-							"ping",
-							"yingling",
-						},
-					})
+					secretsBytes,
+					ocParams([]string{"ping", "ying"}, []string{"ping", "yingling"}),
+				)
 				Expect(err).ToNot(HaveOccurred())
-				s := safe(home, "get", "/secret/othersecrets:ping")
-				s.Stdout = nil
-				result, err := s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("pong\n"))
-				s = safe(home, "get", "/secret/othersecrets:yingling")
-				s.Stdout = nil
-				result, err = s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("yang\n"))
-				s = safe(home, "get", "/secret/othersecrets:this")
-				s.Stdout = nil
-				result, err = s.Output()
+				expected := map[string]string{"ping": "pong", "yingling": "yang"}
+				for key, value := range expected {
+					result, err := safeGet(othersecretsPath + key)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(string(result)).To(Equal(value + "\n"))
+				}
+				_, err = safeGet(othersecretsPath + "this")
 				Expect(err).To(HaveOccurred())
 			})
 			It("should import specified secrets from directory and retain the original key names", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-						"keys_to_copy": []string{
-							"ping",
-							"ying",
-						},
-					})
+					secretsBytes,
+					ocParams([]string{"ping", "ying"}, nil),
+				)
 				Expect(err).ToNot(HaveOccurred())
-				s := safe(home, "get", "/secret/othersecrets:ping")
-				s.Stdout = nil
-				result, err := s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("pong\n"))
-				s = safe(home, "get", "/secret/othersecrets:ying")
-				s.Stdout = nil
-				result, err = s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("yang\n"))
+				expected := map[string]string{"ping": "pong", "ying": "yang"}
+				for key, value := range expected {
+					result, err := safeGet(othersecretsPath + key)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(string(result)).To(Equal(value + "\n"))
+				}
 			})
 			It("should ignore renamed_to if keys_to_copy is not specified", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-						"renamed_to": []string{
-							"ping",
-							"yingling",
-						},
-					})
+					secretsBytes,
+					ocParams(nil, []string{"ping", "yingling"}),
+				)
 				Expect(err).ToNot(HaveOccurred())
-				s := safe(home, "get", "/secret/othersecrets:ping")
-				s.Stdout = nil
-				result, err := s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("pong\n"))
-				s = safe(home, "get", "/secret/othersecrets:ying")
-				s.Stdout = nil
-				result, err = s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("yang\n"))
+				expected := map[string]string{"ping": "pong", "ying": "yang"}
+				for key, value := range expected {
+					result, err := safeGet(othersecretsPath + key)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(string(result)).To(Equal(value + "\n"))
+				}
 			})
 			It("should fail gracefully if keys_to_copy and renamed_to have a different number of values", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-						"keys_to_copy": []string{
-							"ping",
-							"ying",
-						},
-						"renamed_to": []string{
-							"thing",
-						},
-					})
+					secretsBytes,
+					ocParams([]string{"ping", "ying"}, []string{"thing"}),
+				)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and renamed_to must have the same number of values"))
 			})
 			It("should fail gracefully if keys_to_copy contains a key that doesn't exist", func() {
 				err := createSecretsAndCallOutFunction(
-					`{"ping":"pong", "ying":"yang"}`,
-					oc.Params{
-						"path":   "root/secret",
-						"prefix": "secret",
-						"keys_to_copy": []string{
-							"ping",
-							"sing",
-						},
-					})
+					secretsBytes,
+					ocParams([]string{"ping", "sing"}, nil),
+				)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(BeEquivalentTo("sing not found"))
 			})
