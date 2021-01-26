@@ -174,7 +174,10 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		filterAndRenameKeys(secret, p.Keys)
+		err = filterAndRenameKeys(secret, p.Keys)
+		if err != nil {
+			return nil, nil, err
+		}
 
 		err = copySecretToVault(r.client, p.Prefix, secretPath, secret)
 		if err != nil {
@@ -185,36 +188,6 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	// `version` retrieved from the file created by `In`, while `metadata` is empty.
 	metadata := oc.Metadata{}
 	return nil, metadata, nil
-}
-
-func validate(secret *sv.Secret, keys []interface{}) error {
-	finalKeys := getFinalKeys(keys)
-	ok := true
-	message := "Specified keys not found:"
-	for key, _ := range finalKeys {
-		if !secret.Has(key) {
-			ok = false
-			message += fmt.Sprintf(" '%s'", key)
-		}
-	}
-	if ok {
-		return nil
-	} else {
-		return fmt.Errorf(message)
-	}
-}
-
-func keysFromMap(aMap map[string]string) []string {
-	keys := []string{}
-	for k, _ := range aMap {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-func copySecretToVault(client *sv.Vault, prefix string, secretPath string, secret *sv.Secret) error {
-	dest := filepath.Join(prefix, secretPath)
-	return client.Write(dest, secret)
 }
 
 func listFilesUnder(rootDir string) ([]string, error) {
@@ -252,23 +225,47 @@ func createSecret(rootDir string, srcPath string) (*sv.Secret, error) {
 	return secret, nil
 }
 
-func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) {
-	if len(keys) == 0 {
-		return
-	}
-
+func validate(secret *sv.Secret, keys []interface{}) error {
 	finalKeys := getFinalKeys(keys)
-
-	for _, currentKey := range secret.Keys() {
-		finalKey, found := finalKeys[currentKey]
-		if found {
-			value := secret.Get(currentKey)
-			secret.Set(finalKey, value, false)
+	ok := true
+	message := "Specified keys not found:"
+	for key := range finalKeys {
+		if !secret.Has(key) {
+			ok = false
+			message += fmt.Sprintf(" '%s'", key)
 		}
-		if (!found) || (finalKey != currentKey) {
+	}
+	if ok {
+		return nil
+	} else {
+		return fmt.Errorf(message)
+	}
+}
+
+func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	finalKeys := getFinalKeys(keys)
+	for _, currentKey := range secret.Keys() {
+		finalKey, isFinalKey := finalKeys[currentKey]
+		if isFinalKey {
+			value := secret.Get(currentKey)
+			err := secret.Set(finalKey, value, false)
+			if err != nil {
+				return err
+			}
+		}
+		if (!isFinalKey) || (finalKey != currentKey) {
 			secret.Delete(currentKey)
 		}
 	}
+	return nil
+}
+
+func copySecretToVault(client *sv.Vault, prefix string, secretPath string, secret *sv.Secret) error {
+	dest := filepath.Join(prefix, secretPath)
+	return client.Write(dest, secret)
 }
 
 func getFinalKeys(keys []interface{}) map[string]string {
@@ -287,34 +284,4 @@ func getFinalKeys(keys []interface{}) map[string]string {
 		}
 	}
 	return finalKeys
-}
-
-func filterKeys(s *sv.Secret, criteriaKeys []string) {
-	if len(criteriaKeys) == 0 {
-		return
-	}
-	for _, key := range s.Keys() {
-		if !contains(criteriaKeys, key) {
-			s.Delete(key)
-		}
-	}
-}
-
-func renameKeys(s *sv.Secret, rename map[string]string) {
-	for key, newKey := range rename {
-		v := s.Get(key)
-		s.Set(newKey, v, false)
-		if key != newKey {
-			s.Delete(key)
-		}
-	}
-}
-
-func contains(a []string, s string) bool {
-	for _, v := range a {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
