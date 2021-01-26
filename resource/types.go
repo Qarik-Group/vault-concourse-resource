@@ -10,28 +10,11 @@ import (
 
 // Recursively read all files from path and write to vault
 type OutParams struct {
-	Path   string            `mapstructure:"path"`
-	Prefix string            `mapstructure:"prefix"`
-	Keys   []string          `mapstructure:"keys"`
-	Rename map[string]string `mapstructure:"renameKeys"`
-	//Keys2  []interface{} `mapstructure:"keys2"`
+	Path   string        `mapstructure:"path"`
+	Prefix string        `mapstructure:"prefix"`
+	Keys   []interface{} `mapstructure:"keys"`
 }
 
-/*
-TODO: Clean this up
-switch (v.(type)) {
-case map[string]string{}:
-	//
-case string:
-	//Just a key
-default:
-	panic("Get outta here")
-}
-params:
-	keys:
-	- beep
-	- boop: foo
-*/
 type Source struct {
 	URL       string   `mapstructure:"url"`
 	Token     string   `mapstructure:"token"`

@@ -169,13 +169,12 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		err = validate(secret, p.Keys, p.Rename)
+		err = validate(secret, p.Keys)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		filterKeys(secret, p.Keys)
-		renameKeys(secret, p.Rename)
+		filterAndRenameKeys(secret, p.Keys)
 
 		err = copySecretToVault(r.client, p.Prefix, secretPath, secret)
 		if err != nil {
@@ -188,27 +187,12 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	return nil, metadata, nil
 }
 
-func validate(secret *sv.Secret, keys []string, rename map[string]string) error {
-	err := validateKeys(secret.Keys(), keys, "Specified keys not found:")
-	if err != nil {
-		return err
-	}
-
-	renameKeys := []string{}
-	for k, _ := range rename {
-		renameKeys = append(renameKeys, k)
-	}
-	err = validateKeys(keys, renameKeys, "Specified keys in rename not found:")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateKeys(availableKeys []string, keys []string, message string) error {
+func validate(secret *sv.Secret, keys []interface{}) error {
+	finalKeys := getFinalKeys(keys)
 	ok := true
-	for _, key := range keys {
-		if !contains(availableKeys, key) {
+	message := "Specified keys not found:"
+	for key, _ := range finalKeys {
+		if !secret.Has(key) {
 			ok = false
 			message += fmt.Sprintf(" '%s'", key)
 		}
@@ -218,6 +202,14 @@ func validateKeys(availableKeys []string, keys []string, message string) error {
 	} else {
 		return fmt.Errorf(message)
 	}
+}
+
+func keysFromMap(aMap map[string]string) []string {
+	keys := []string{}
+	for k, _ := range aMap {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func copySecretToVault(client *sv.Vault, prefix string, secretPath string, secret *sv.Secret) error {
@@ -258,6 +250,43 @@ func createSecret(rootDir string, srcPath string) (*sv.Secret, error) {
 		return nil, fmt.Errorf("")
 	}
 	return secret, nil
+}
+
+func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) {
+	if len(keys) == 0 {
+		return
+	}
+
+	finalKeys := getFinalKeys(keys)
+
+	for _, currentKey := range secret.Keys() {
+		finalKey, found := finalKeys[currentKey]
+		if found {
+			value := secret.Get(currentKey)
+			secret.Set(finalKey, value, false)
+		}
+		if (!found) || (finalKey != currentKey) {
+			secret.Delete(currentKey)
+		}
+	}
+}
+
+func getFinalKeys(keys []interface{}) map[string]string {
+	finalKeys := map[string]string{}
+	for _, key := range keys {
+		switch v := key.(type) {
+		case string:
+			keyString := fmt.Sprintf("%v", key)
+			finalKeys[keyString] = keyString
+		case map[string]string:
+			for key, value := range v {
+				finalKeys[key] = value
+			}
+		default:
+			// do nothing
+		}
+	}
+	return finalKeys
 }
 
 func filterKeys(s *sv.Secret, criteriaKeys []string) {
