@@ -31,8 +31,7 @@ Import all secrets from a directory `path` to assigned vault
 
 * `path`: *Required.* The directory from the exported secrets from the IN step
 * `prefix`: *Optional.* Prefix to use for the output path in vault.
-* `keys_to_copy`: *Optional* List of keys to copy. All keys will be copied if not specified.
-* `renamed_to`: *Optional* List of new names for each key in the keys_to_copy param. If not specified, existing names will be retained. If specified, values for all keys in the keys_to_copy param must be included, even of the name is to remain the same.
+* `keys`: *Optional* List of keys to copy. If this is not specified, all keys will be copied. Keys can be renamed using "oldName: newName" (see example)
 
 ## Example
 
@@ -65,12 +64,9 @@ jobs:
     params:
       path: vault-concourse-resource/secret
       prefix: secret2
-      keys_to_copy: 
+      keys: 
       - cert
-      - pwd
-      renamed_to: 
-      - cert
-      - password
+      - pwd: password
 
 ```
 
