@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	oc "github.com/cloudboss/ofcourse/ofcourse"
+	sv "github.com/starkandwayne/safe/vault"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
-
-	oc "github.com/cloudboss/ofcourse/ofcourse"
-	sv "github.com/starkandwayne/safe/vault"
 )
 
 var (
@@ -43,7 +41,6 @@ func (r *Resource) configureClient(s Source) (err error) {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -51,17 +48,14 @@ func (r *Resource) configureClient(s Source) (err error) {
 // This is called when Concourse does its resource checks, or when the `fly check-resource` command is run.
 func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environment,
 	logger *oc.Logger) ([]oc.Version, error) {
-
 	s, err := parseSource(source)
 	if err != nil {
 		return nil, err
 	}
-
 	err = r.configureClient(s)
 	if err != nil {
 		return nil, err
 	}
-
 	secrets := sv.Secrets{}
 	for _, p := range s.Paths {
 		s, err := r.client.ConstructSecrets(p, sv.TreeOpts{
@@ -72,14 +66,11 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 		}
 		secrets = secrets.Merge(s)
 	}
-
 	secrets.Sort()
-
 	export := make(map[string]*sv.Secret)
 	for _, s := range secrets {
 		export[s.Path] = s.Versions[0].Data
 	}
-
 	raw, err := json.Marshal(&export)
 	newVersion := newVersion(raw, s.URL)
 	if version != nil {
@@ -91,7 +82,6 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 			return []oc.Version{}, nil
 		}
 	}
-
 	return []oc.Version{newVersion.toOCVersion()}, nil
 }
 
@@ -99,17 +89,14 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 // This is called when a Concourse job does `get` on the resource.
 func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params, version oc.Version,
 	env oc.Environment, logger *oc.Logger) (oc.Version, oc.Metadata, error) {
-
 	s, err := parseSource(source)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	err = r.configureClient(s)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	secrets := sv.Secrets{}
 	for _, p := range s.Paths {
 		s, err := r.client.ConstructSecrets(p, sv.TreeOpts{
@@ -120,27 +107,22 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 		}
 		secrets = secrets.Merge(s)
 	}
-
 	secrets.Sort()
-
 	for _, s := range secrets {
 		filePath := filepath.Join(outputDirectory, s.Path)
 		raw, err := s.Versions[0].Data.MarshalJSON()
 		if err != nil {
 			return nil, nil, err
 		}
-
 		err = os.MkdirAll(path.Dir(filePath), 0775)
 		if err != nil {
 			return nil, nil, err
 		}
-
 		err = ioutil.WriteFile(filePath, raw, 0644)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-
 	// Metadata consists of arbitrary name/value pairs for display in the Concourse UI,
 	// and may be returned empty if not needed.
 	metadata := oc.Metadata{
@@ -153,7 +135,6 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 		// 	Value: "d",
 		// },
 	}
-
 	// Here, `version` is passed through from the argument. In most cases, it makes sense
 	// to retrieve the most recent version, i.e. the one in the `version` argument, and
 	// then return it back unchanged. However, it is allowed to return some other version
@@ -165,131 +146,149 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 // This is called when a Concourse job does a `put` on the resource.
 func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params,
 	env oc.Environment, logger *oc.Logger) (oc.Version, oc.Metadata, error) {
-
 	s, err := parseSource(source)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	p, err := parseOutParams(params)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	err = r.configureClient(s)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	rootDir := filepath.Join(inputDirectory, p.Path)
-
-	err = filepath.Walk(rootDir,
-		func(path string, info os.FileInfo, err error) error {
-			if info.IsDir() {
-				return nil
-			}
-
-			bytes, err := ioutil.ReadFile(path)
-			if err != nil {
-				return err
-			}
-
-			oldSecret := sv.NewSecret()
-			err = oldSecret.UnmarshalJSON(bytes)
-
-			if err != nil {
-				return err
-			}
-			secretPath, err := filepath.Rel(rootDir, path)
-			if err != nil {
-				return err
-			}
-
-			newSecret, err := filterAndRenameKeys(oldSecret, p.KeysToCopy, p.RenamedTo)
-			if err != nil {
-				return err
-			}
-
-			return r.client.Write(filepath.Join(p.Prefix, secretPath), newSecret)
-		})
+	files, err := listFilesUnder(rootDir)
 	if err != nil {
 		return nil, nil, err
 	}
+	for _, secretPath := range files {
+		secret, err := createSecret(rootDir, secretPath)
+		if err != nil {
+			return nil, nil, err
+		}
 
+		err = validate(secret, p.Keys, p.Rename)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		filterKeys(secret, p.Keys)
+		renameKeys(secret, p.Rename)
+
+		err = copySecretToVault(r.client, p.Prefix, secretPath, secret)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	// Both `version` and `metadata` may be empty. In this case, we are returning
 	// `version` retrieved from the file created by `In`, while `metadata` is empty.
 	metadata := oc.Metadata{}
 	return nil, metadata, nil
 }
 
-//  Filters out any keys that are not included in keysToCopyString and renames
-// each key to the value in it's corresponding position in newKeyNamesString.
-// newKeyNamesString, The original key names are retained if newKeyNamesString
-// is not specified.
-// 	secret: The existing secret
-//		keysToCopyString: A comma separated string of keys to be copied. If empty,
-//			all keys are copied.
-//		newKeyNames: A comma separated string of new names for the keys in
-//			keysToCopyString. Must have the same number of elements as
-//			keysToCopyString.
-func filterAndRenameKeys(secret *sv.Secret, keysToCopy []string, renamedTo []string) (*sv.Secret, error) {
-
-	// if no keys are specified, use them all
-	if len(keysToCopy) == 0 {
-		return secret, nil
-	}
-
-	err := vaildate(secret, keysToCopy, renamedTo)
-	if err != nil {
-		return nil, err
-	}
-
-	finalKeyNames := keysToCopy
-	if len(renamedTo) != 0 {
-		finalKeyNames = renamedTo
-	}
-
-	filteredSecret := sv.NewSecret()
-
-	for i, oldKey := range keysToCopy {
-		v := secret.Get(oldKey)
-		filteredSecret.Set(finalKeyNames[i], v, false)
-	}
-
-	return filteredSecret, nil
-}
-
-func vaildate(secret *sv.Secret, keysToCopy []string, renamedTo []string) error {
-
-	err := keysToCopyAndRenamedToHaveTheSameLength(renamedTo, keysToCopy)
+func validate(secret *sv.Secret, keys []string, rename map[string]string) error {
+	err := validateKeys(secret.Keys(), keys, "Specified keys not found:")
 	if err != nil {
 		return err
 	}
 
-	err = keysToCopyContainsNoMissingKeys(secret, keysToCopy)
+	renameKeys := []string{}
+	for k, _ := range rename {
+		renameKeys = append(renameKeys, k)
+	}
+	err = validateKeys(keys, renameKeys, "Specified keys in rename not found:")
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func keysToCopyContainsNoMissingKeys(secret *sv.Secret, keysToCopy []string) error {
-	missingKeys := []string{}
-	for _, key := range keysToCopy {
-		if !secret.Has(key) {
-			missingKeys = append(missingKeys, key)
+func validateKeys(availableKeys []string, keys []string, message string) error {
+	ok := true
+	for _, key := range keys {
+		if !contains(availableKeys, key) {
+			ok = false
+			message += fmt.Sprintf(" '%s'", key)
 		}
 	}
-	if len(missingKeys) > 0 {
-		return errors.New(fmt.Sprintf("%s not found", strings.Join(missingKeys, ",")))
+	if ok {
+		return nil
+	} else {
+		return fmt.Errorf(message)
+	}
+}
+
+func copySecretToVault(client *sv.Vault, prefix string, secretPath string, secret *sv.Secret) error {
+	dest := filepath.Join(prefix, secretPath)
+	return client.Write(dest, secret)
+}
+
+func listFilesUnder(rootDir string) ([]string, error) {
+	ret := []string{}
+	err := filepath.Walk(rootDir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			secretPath, err := filepath.Rel(rootDir, path)
+			if err != nil {
+				return err
+			}
+			ret = append(ret, secretPath)
+			return nil
+		},
+	)
+	return ret, err
+}
+
+func createSecret(rootDir string, srcPath string) (*sv.Secret, error) {
+	srcFile, err := os.Open(filepath.Join(rootDir, srcPath))
+	if err != nil {
+		return nil, fmt.Errorf("Error reading source file '%s': %s", srcPath, err)
+	}
+	jDec := json.NewDecoder(srcFile)
+	secret := sv.NewSecret()
+	err = jDec.Decode(&secret)
+	if err != nil {
+		return nil, fmt.Errorf("")
+	}
+	return secret, nil
+}
+
+func filterKeys(s *sv.Secret, criteriaKeys []string) error {
+	if len(criteriaKeys) == 0 {
+		return nil
+	}
+	for _, key := range s.Keys() {
+		if !contains(criteriaKeys, key) {
+			s.Delete(key)
+			return nil
+		}
 	}
 	return nil
 }
 
-func keysToCopyAndRenamedToHaveTheSameLength(renamedTo []string, keysToCopy []string) error {
-	if (len(renamedTo) > 0) && (len(keysToCopy) != len(renamedTo)) {
-		return errors.New("keys_to_copy and renamed_to must have the same number of values")
+func renameKeys(s *sv.Secret, rename map[string]string) error {
+	for key, newKey := range rename {
+		v := s.Get(key)
+		s.Set(newKey, v, false)
+		if key != newKey {
+			s.Delete(key)
+		}
 	}
 	return nil
+}
+
+func contains(a []string, s string) bool {
+	for _, v := range a {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

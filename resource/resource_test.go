@@ -38,16 +38,16 @@ func getCurrentVaultTarget(home string) (string, string) {
 	return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
 }
 
-func ocParams(keys []string, rename []string) oc.Params {
+func ocParams(keys []string, rename map[string]string) oc.Params {
 	params := oc.Params{
 		"path":   "root/secret",
 		"prefix": "secret",
 	}
 	if keys != nil {
-		params["keys_to_copy"] = keys
+		params["keys"] = keys
 	}
 	if rename != nil {
-		params["renamed_to"] = rename
+		params["renameKeys"] = rename
 	}
 	return params
 }
@@ -161,7 +161,7 @@ var _ = Describe("Resource", func() {
 			It("should import only specified secrets from directory and name them appropriately", func() {
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
-					ocParams([]string{"ping", "ying"}, []string{"ping", "yingling"}),
+					ocParams([]string{"ping", "ying"}, map[string]string{"ping": "ping", "ying": "yingling"}),
 				)
 				Expect(err).ToNot(HaveOccurred())
 				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
@@ -176,29 +176,29 @@ var _ = Describe("Resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "ying": "yang"})
 			})
-			It("should ignore renamed_to if keys_to_copy is not specified", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams(nil, []string{"ping", "yingling"}),
-				)
-				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "ying": "yang"})
-			})
-			It("should fail gracefully if keys_to_copy and renamed_to have a different number of values", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams([]string{"ping", "ying"}, []string{"thing"}),
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and renamed_to must have the same number of values"))
-			})
-			It("should fail gracefully if keys_to_copy contains a key that doesn't exist", func() {
+			//It("should fail gracefully if Keys and Renamed have a different number of values", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams([]string{"ping", "ying"}, map[string]string{"ping":"thing"}),
+			//	)
+			//	Expect(err).To(HaveOccurred())
+			//	Expect(err.Error()).To(BeEquivalentTo("keys_to_copy and renamed_to must have the same number of values"))
+			//})
+			It("should fail gracefully if Keys contains a key that doesn't exist", func() {
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
 					ocParams([]string{"ping", "sing"}, nil),
 				)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("sing not found"))
+				Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'sing'"))
+			})
+			It("should fail gracefully if Rename contains a key that doesn't exist", func() {
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams([]string{"ping", "ying"}, map[string]string{"ping": "pong", "this": "that"}),
+				)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(BeEquivalentTo("Specified keys in rename not found: 'this'"))
 			})
 		})
 	})
