@@ -95,6 +95,13 @@ var _ = Describe("Resource", func() {
 		}
 	}
 
+	vaultPathDoesNotContainUnexpectedKeys := func(unexpected []string) {
+		for _, key := range unexpected {
+			_, err := safeGet(othersecretsPath + key)
+			Expect(err).To(HaveOccurred())
+		}
+	}
+
 	BeforeEach(func() {
 		var err error
 		home, err = ioutil.TempDir("", "vault-concourse-home")
@@ -165,16 +172,25 @@ var _ = Describe("Resource", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
-				_, err = safeGet(othersecretsPath + "this")
-				Expect(err).To(HaveOccurred())
+				vaultPathDoesNotContainUnexpectedKeys([]string{"this"})
 			})
-			It("should import specified secrets from directory and retain the original key names", func() {
+			It("should import multiple secrets from directory and retain the original key names", func() {
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
-					ocParams([]string{"ping", "ying"}, nil),
+					ocParams([]string{"ying", "this"}, nil),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "ying": "yang"})
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ying": "yang", "this": "that"})
+				vaultPathDoesNotContainUnexpectedKeys([]string{"ping"})
+			})
+			It("should import one secrets from directory and retain the original key names", func() {
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams([]string{"ping"}, nil),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong"})
+				vaultPathDoesNotContainUnexpectedKeys([]string{"ying", "this"})
 			})
 			//It("should fail gracefully if Keys and Renamed have a different number of values", func() {
 			//	err := createSecretsAndCallOutFunction(

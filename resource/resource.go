@@ -260,20 +260,18 @@ func createSecret(rootDir string, srcPath string) (*sv.Secret, error) {
 	return secret, nil
 }
 
-func filterKeys(s *sv.Secret, criteriaKeys []string) error {
+func filterKeys(s *sv.Secret, criteriaKeys []string) {
 	if len(criteriaKeys) == 0 {
-		return nil
+		return
 	}
 	for _, key := range s.Keys() {
 		if !contains(criteriaKeys, key) {
 			s.Delete(key)
-			return nil
 		}
 	}
-	return nil
 }
 
-func renameKeys(s *sv.Secret, rename map[string]string) error {
+func renameKeys(s *sv.Secret, rename map[string]string) {
 	for key, newKey := range rename {
 		v := s.Get(key)
 		s.Set(newKey, v, false)
@@ -281,7 +279,6 @@ func renameKeys(s *sv.Secret, rename map[string]string) error {
 			s.Delete(key)
 		}
 	}
-	return nil
 }
 
 func contains(a []string, s string) bool {
