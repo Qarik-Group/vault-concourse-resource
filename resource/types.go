@@ -16,6 +16,7 @@ type OutParams struct {
 	Steves []Steve       `mapstructure:"steves"`
 }
 
+// TODO name this SourceAndDest. Rename Name to SourcePath & Dest to DestPath
 type Steve struct {
 	Name string        `mapstructure:"name"`
 	Dest string        `mapstructure:"dest"`
@@ -48,7 +49,13 @@ func parseOutParams(p oc.Params) (OutParams, error) {
 	if err := validateField("path", result.Path); err != nil {
 		return OutParams{}, err
 	}
+	if len(result.Steves) == 0 {
+		return OutParams{}, fmt.Errorf("Please provide a source for the secret")
+	}
 	for i := 0; i < len(result.Steves); i++ {
+		if result.Steves[i].Name == "" {
+			return OutParams{}, fmt.Errorf("Please provide a source for the secret")
+		}
 		if result.Steves[i].Dest == "" {
 			result.Steves[i].Dest = result.Steves[i].Name
 		}

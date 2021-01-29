@@ -176,6 +176,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 				return nil, nil, err
 			}
 
+			// TODO add these back in
 			//err = validate(secret, p.Keys)
 			//if err != nil {
 			//	return nil, nil, err
