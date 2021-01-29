@@ -64,17 +64,16 @@ var _ = Describe("Resource", func() {
 
 	createSecretsAndCallOutFunction := func(secretsBytes string, params oc.Params) error {
 		inDir := filepath.Join(home, "in")
-
 		//namePath = params["steves"].([]interface{})[0].(map[string]string)["name"] // too damn ugly
 		stevesParam := params["steves"].([]interface{})
-		steveParam := stevesParam[0].(map[string]string)
-		namePath := steveParam["name"]
-
+		steveParam := stevesParam[0].(map[string]interface{})
+		namePath := (steveParam["name"]).(string)
 		secretDir := filepath.Join(inDir, params["path"].(string), namePath)
 		err := os.MkdirAll(secretDir, 0775)
 		Expect(err).ToNot(HaveOccurred())
 		filename := filepath.Join(secretDir, "othersecrets")
 		ioutil.WriteFile(filename, []byte(secretsBytes), 0644)
+
 		_, _, err = r.Out(inDir, oc.Source{
 			"url":   url,
 			"token": token,
@@ -82,6 +81,7 @@ var _ = Describe("Resource", func() {
 				"/secret/handshake",
 			},
 		}, params, env, testLogger)
+
 		return err
 	}
 
@@ -99,20 +99,22 @@ var _ = Describe("Resource", func() {
 		}
 	}
 
-	// TODO add keys param and "keys" key
-	createSteves := func(name string, dest string) []interface{} {
-		return []interface{}{
-			map[string]string{"name": name, "dest": dest},
+	vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
+		for _, key := range unexpected {
+			_, err := safeGet(filepath.Join(prefix, pathName, "othersecrets") + ":" + key)
+			Expect(err).To(HaveOccurred())
 		}
 	}
 
-	// TODO add this back in to tests
-	//vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
-	//	for _, key := range unexpected {
-	//		_, err := safeGet(pathName + ":"  + key)
-	//		Expect(err).To(HaveOccurred())
-	//	}
-	//}
+	createSteves := func(name string, dest string, keys []interface{}) []interface{} {
+		return []interface{}{
+			map[string]interface{}{
+				"name": name,
+				"dest": dest,
+				"keys": keys,
+			},
+		}
+	}
 
 	BeforeEach(func() {
 		var err error
@@ -169,29 +171,59 @@ var _ = Describe("Resource", func() {
 	Describe("Out", func() {
 		const secretsBytes = `{"ping":"pong", "this":"that", "ying":"yang"}`
 		Context("given a vault with secrets", func() {
-			It("should import all secrets and write them back to the same path name, retaining original key names", func() {
-				steves := createSteves("/some/place", "")
+			It("should import all keys and write them back to the same path name, retaining original key names", func() {
+				steves := createSteves("/some/place", "", nil)
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
 					ocParams(steves),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				expectedPath := steves[0].(map[string]string)["name"]
+				expectedPath := (steves[0].(map[string]interface{})["name"]).(string)
 				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
-			It("should import all secrets and write them to the destPath path name, retaining original key names", func() {
-				steves := createSteves("/some/place", "/new/place")
+			It("should import all keys and write them to the destPath path name, retaining original key names", func() {
+				steves := createSteves("/some/place", "/new/place", nil)
 				params := ocParams(steves)
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
 					params,
 				)
 				Expect(err).ToNot(HaveOccurred())
-				expectedPath := steves[0].(map[string]string)["dest"]
+				expectedPath := (steves[0].(map[string]interface{})["dest"]).(string)
 				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
+			It("should import only specified keys and write them back to the same path name, retaining original key names", func() {
+				keys := []interface{}{
+					"ping",
+					"ying",
+				}
+				steves := createSteves("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams(steves),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				expectedPath := (steves[0].(map[string]interface{})["name"]).(string)
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "ying": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
+			})
+			It("should import only specified keys, rename them appropriately and write them back to the same path name", func() {
+				keys := []interface{}{
+					"ping",
+					map[string]string{"ying": "yingling"},
+				}
+				steves := createSteves("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams(steves),
+				)
+				Expect(err).ToNot(HaveOccurred())
+				expectedPath := (steves[0].(map[string]interface{})["name"]).(string)
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
+			})
 			It("should fail gracefully if no name is specified", func() {
-				steves := createSteves("", "")
+				steves := createSteves("", "", nil)
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
 					ocParams(steves),

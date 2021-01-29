@@ -10,10 +10,9 @@ import (
 
 // Recursively read all files from path and write to vault
 type OutParams struct {
-	Path   string        `mapstructure:"path"`
-	Prefix string        `mapstructure:"prefix"`
-	Keys   []interface{} `mapstructure:"keys"` //this will go away
-	Steves []Steve       `mapstructure:"steves"`
+	Path   string  `mapstructure:"path"`
+	Prefix string  `mapstructure:"prefix"`
+	Steves []Steve `mapstructure:"steves"`
 }
 
 // TODO name this SourceAndDest. Rename Name to SourcePath & Dest to DestPath
