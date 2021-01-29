@@ -176,10 +176,10 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 				return nil, nil, err
 			}
 
-			//err = validate(secret, steve.Keys)
-			//if err != nil {
-			//	return nil, nil, err
-			//}
+			err = validate(secret, steve.Keys)
+			if err != nil {
+				return nil, nil, err
+			}
 
 			err = filterAndRenameKeys(secret, steve.Keys)
 			if err != nil {

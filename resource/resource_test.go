@@ -231,64 +231,36 @@ var _ = Describe("Resource", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(BeEquivalentTo("Please provide a source for the secret"))
 			})
-			//It("should import all secrets from directory and retain original key names", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams(nil),
-			//	)
-			//	Expect(err).ToNot(HaveOccurred())
-			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
-			//})
-			//It("should import only specified secrets from directory and name them appropriately", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams(
-			//			[]interface{}{
-			//				"ping",
-			//				map[string]string{"ying": "yingling"},
-			//			}),
-			//	)
-			//	Expect(err).ToNot(HaveOccurred())
-			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
-			//	vaultPathDoesNotContainUnexpectedKeys([]string{"this"})
-			//})
-			//It("should import multiple secrets from directory and retain the original key names", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams([]interface{}{"ying", "this"}),
-			//	)
-			//	Expect(err).ToNot(HaveOccurred())
-			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ying": "yang", "this": "that"})
-			//	vaultPathDoesNotContainUnexpectedKeys([]string{"ping"})
-			//})
-			//It("should import one secrets from directory and retain the original key names", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams([]interface{}{"ping"}),
-			//	)
-			//	Expect(err).ToNot(HaveOccurred())
-			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong"})
-			//	vaultPathDoesNotContainUnexpectedKeys([]string{"ying", "this"})
-			//})
-			//It("should fail gracefully if Keys contains a key that doesn't exist", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams([]interface{}{"ping", "sing"}),
-			//	)
-			//	Expect(err).To(HaveOccurred())
-			//	Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'sing'"))
-			//})
-			//It("\"should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
-			//	err := createSecretsAndCallOutFunction(
-			//		secretsBytes,
-			//		ocParams(
-			//			[]interface{}{
-			//				map[string]string{"ping": "pong", "oops": "dang"},
-			//			}),
-			//	)
-			//	Expect(err).To(HaveOccurred())
-			//	Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'oops'"))
-			//})
+			It("should fail gracefully if Keys contains a key that doesn't exist", func() {
+				keys := []interface{}{
+					"ping",
+					"king",
+					"ting",
+				}
+				steves := createSteves("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams(steves),
+				)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
+				Expect(err.Error()).To(ContainSubstring("'king'"))
+				Expect(err.Error()).To(ContainSubstring("'ting'"))
+			})
+			It("should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
+				keys := []interface{}{
+					map[string]string{"ping": "pong", "oops": "dang", "king": "queen"},
+				}
+				steves := createSteves("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(
+					secretsBytes,
+					ocParams(steves),
+				)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
+				Expect(err.Error()).To(ContainSubstring("'oops'"))
+				Expect(err.Error()).To(ContainSubstring("'king'"))
+			})
 		})
 	})
 
