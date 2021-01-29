@@ -146,6 +146,7 @@ func (r *Resource) In(outputDirectory string, source oc.Source, params oc.Params
 // This is called when a Concourse job does a `put` on the resource.
 func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params,
 	env oc.Environment, logger *oc.Logger) (oc.Version, oc.Metadata, error) {
+
 	s, err := parseSource(source)
 	if err != nil {
 		return nil, nil, err
@@ -158,30 +159,38 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	if err != nil {
 		return nil, nil, err
 	}
+
 	rootDir := filepath.Join(inputDirectory, p.Path)
-	files, err := listFilesUnder(rootDir)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, secretPath := range files {
-		secret, err := createSecret(rootDir, secretPath)
+
+	for _, steve := range p.Steves {
+
+		nameDir := filepath.Join(rootDir, steve.Name)
+		files, err := listFilesUnder(nameDir)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		err = validate(secret, p.Keys)
-		if err != nil {
-			return nil, nil, err
-		}
+		for _, secretFile := range files {
+			secret, err := createSecret(nameDir, secretFile)
+			if err != nil {
+				return nil, nil, err
+			}
 
-		err = filterAndRenameKeys(secret, p.Keys)
-		if err != nil {
-			return nil, nil, err
-		}
+			//err = validate(secret, p.Keys)
+			//if err != nil {
+			//	return nil, nil, err
+			//}
+			//
+			//err = filterAndRenameKeys(secret, p.Keys)
+			//if err != nil {
+			//	return nil, nil, err
+			//}
 
-		err = copySecretToVault(r.client, p.Prefix, secretPath, secret)
-		if err != nil {
-			return nil, nil, err
+			err = copySecretToVault(r.client, p.Prefix, steve.Dest, secretFile, secret)
+			if err != nil {
+				return nil, nil, err
+			}
+
 		}
 	}
 	// Both `version` and `metadata` may be empty. In this case, we are returning
@@ -211,16 +220,16 @@ func listFilesUnder(rootDir string) ([]string, error) {
 	return ret, err
 }
 
-func createSecret(rootDir string, srcPath string) (*sv.Secret, error) {
-	srcFile, err := os.Open(filepath.Join(rootDir, srcPath))
+func createSecret(rootDir string, secretFile string) (*sv.Secret, error) {
+	srcFile, err := os.Open(filepath.Join(rootDir, secretFile))
 	if err != nil {
-		return nil, fmt.Errorf("Error reading source file '%s': %s", srcPath, err)
+		return nil, fmt.Errorf("Error reading source file '%s': %s", secretFile, err)
 	}
 	jDec := json.NewDecoder(srcFile)
 	secret := sv.NewSecret()
 	err = jDec.Decode(&secret)
 	if err != nil {
-		return nil, fmt.Errorf("")
+		return nil, err
 	}
 	return secret, nil
 }
@@ -235,11 +244,10 @@ func validate(secret *sv.Secret, keys []interface{}) error {
 			message += fmt.Sprintf(" '%s'", key)
 		}
 	}
-	if ok {
-		return nil
-	} else {
+	if !ok {
 		return fmt.Errorf(message)
 	}
+	return nil
 }
 
 func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) error {
@@ -263,9 +271,9 @@ func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) error {
 	return nil
 }
 
-func copySecretToVault(client *sv.Vault, prefix string, secretPath string, secret *sv.Secret) error {
-	dest := filepath.Join(prefix, secretPath)
-	return client.Write(dest, secret)
+func copySecretToVault(client *sv.Vault, prefix string, dest string, secretPath string, secret *sv.Secret) error {
+	finalDest := filepath.Join(prefix, dest, secretPath)
+	return client.Write(finalDest, secret)
 }
 
 func getFinalKeys(keys []interface{}) map[string]string {

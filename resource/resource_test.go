@@ -15,40 +15,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func safe(home string, args ...string) *exec.Cmd {
-	cmd := exec.Command("safe", args...)
-	cmd.Stdout = GinkgoWriter
-	cmd.Stderr = GinkgoWriter
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("HOME=%s", home),
-	)
-	return cmd
-}
-
-func getCurrentVaultTarget(home string) (string, string) {
-	config := struct {
-		Current string                       `yaml:"current"`
-		Vaults  map[string]map[string]string `yaml:"vaults"`
-	}{}
-	raw, err := ioutil.ReadFile(filepath.Join(home, ".saferc"))
-	Expect(err).ToNot(HaveOccurred())
-	err = yaml.Unmarshal(raw, &config)
-	Expect(err).ToNot(HaveOccurred())
-	return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
-}
-
-func ocParams(keys []interface{}) oc.Params {
-	params := oc.Params{
-		"path":   "root/secret",
-		"prefix": "secret",
-	}
-	if keys != nil {
-		params["keys"] = keys
-	}
-	return params
-}
-
 var _ = Describe("Resource", func() {
 	var (
 		vault      *exec.Cmd
@@ -60,14 +26,49 @@ var _ = Describe("Resource", func() {
 		testLogger = oc.NewLogger(oc.SilentLevel) // TODO: cannot use ginkgo.GinkgoWriter (type io.Writer) as type *ofcourse.Logger ginko writer logger? https://onsi.github.io/ginkgo/#logging-output
 	)
 
-	const othersecretsPath = "/secret/othersecrets:"
+	const prefix = "secret"
 
-	createSecretsAndCallOutFunction := func(secretsBytes string, params oc.Params) error {
+	safe := func(home string, args ...string) *exec.Cmd {
+		cmd := exec.Command("safe", args...)
+		cmd.Stdout = GinkgoWriter
+		cmd.Stderr = GinkgoWriter
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("HOME=%s", home),
+		)
+		return cmd
+	}
+
+	ocParams := func(steves []interface{}) oc.Params {
+		params := oc.Params{
+			"path":   "resource_root_path",
+			"prefix": prefix,
+		}
+		if steves != nil {
+			params["steves"] = steves
+		}
+		return params
+	}
+
+	getCurrentVaultTarget := func(home string) (string, string) {
+		config := struct {
+			Current string                       `yaml:"current"`
+			Vaults  map[string]map[string]string `yaml:"vaults"`
+		}{}
+		raw, err := ioutil.ReadFile(filepath.Join(home, ".saferc"))
+		Expect(err).ToNot(HaveOccurred())
+		err = yaml.Unmarshal(raw, &config)
+		Expect(err).ToNot(HaveOccurred())
+		return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
+	}
+
+	createSecretsAndCallOutFunction := func(secretsBytes string, namePath string, params oc.Params) error {
 		inDir := filepath.Join(home, "in")
-		secretDir := filepath.Join(inDir, "root/secret")
+		secretDir := filepath.Join(inDir, params["path"].(string), namePath)
 		err := os.MkdirAll(secretDir, 0775)
 		Expect(err).ToNot(HaveOccurred())
-		ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(secretsBytes), 0644)
+		filename := filepath.Join(secretDir, "othersecrets")
+		ioutil.WriteFile(filename, []byte(secretsBytes), 0644)
 		_, _, err = r.Out(inDir, oc.Source{
 			"url":   url,
 			"token": token,
@@ -84,20 +85,20 @@ var _ = Describe("Resource", func() {
 		return s.Output()
 	}
 
-	vaultPathContainsExpectedKeysAndValues := func(expected map[string]string) {
+	vaultPathContainsExpectedKeysAndValues := func(pathName string, expected map[string]string) {
 		for key, value := range expected {
-			result, err := safeGet(othersecretsPath + key)
+			result, err := safeGet(filepath.Join(prefix, pathName, "othersecrets") + ":" + key)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(string(result)).To(Equal(value + "\n"))
 		}
 	}
 
-	vaultPathDoesNotContainUnexpectedKeys := func(unexpected []string) {
-		for _, key := range unexpected {
-			_, err := safeGet(othersecretsPath + key)
-			Expect(err).To(HaveOccurred())
-		}
-	}
+	//vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
+	//	for _, key := range unexpected {
+	//		_, err := safeGet(pathName + ":"  + key)
+	//		Expect(err).To(HaveOccurred())
+	//	}
+	//}
 
 	BeforeEach(func() {
 		var err error
@@ -154,64 +155,95 @@ var _ = Describe("Resource", func() {
 	Describe("Out", func() {
 		const secretsBytes = `{"ping":"pong", "this":"that", "ying":"yang"}`
 		Context("given a vault with secrets", func() {
-			It("should import all secrets from directory and retain original key names", func() {
+			It("should import all secrets and write them back to the same path name, retaining original key names", func() {
+				namePath := "/some/place"
+				destPath := ""
+				steves := []interface{}{
+					map[string]string{"name": namePath, "dest": destPath},
+				}
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
-					ocParams(nil),
+					namePath,
+					ocParams(steves),
 				)
 				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+				expectedPath := steves[0].(map[string]string)["name"]
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
-			It("should import only specified secrets from directory and name them appropriately", func() {
+			It("should import all secrets and write them to the destPath path name, retaining original key names", func() {
+				namePath := "/some/place"
+				destPath := "/new/place"
+				steves := []interface{}{
+					map[string]string{"name": namePath, "dest": destPath},
+				}
+				params := ocParams(steves)
 				err := createSecretsAndCallOutFunction(
 					secretsBytes,
-					ocParams(
-						[]interface{}{
-							"ping",
-							map[string]string{"ying": "yingling"},
-						}),
+					namePath,
+					params,
 				)
 				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
-				vaultPathDoesNotContainUnexpectedKeys([]string{"this"})
+				expectedPath := steves[0].(map[string]string)["dest"]
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
-			It("should import multiple secrets from directory and retain the original key names", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams([]interface{}{"ying", "this"}),
-				)
-				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ying": "yang", "this": "that"})
-				vaultPathDoesNotContainUnexpectedKeys([]string{"ping"})
-			})
-			It("should import one secrets from directory and retain the original key names", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams([]interface{}{"ping"}),
-				)
-				Expect(err).ToNot(HaveOccurred())
-				vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong"})
-				vaultPathDoesNotContainUnexpectedKeys([]string{"ying", "this"})
-			})
-			It("should fail gracefully if Keys contains a key that doesn't exist", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams([]interface{}{"ping", "sing"}),
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'sing'"))
-			})
-			It("\"should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
-				err := createSecretsAndCallOutFunction(
-					secretsBytes,
-					ocParams(
-						[]interface{}{
-							map[string]string{"ping": "pong", "oops": "dang"},
-						}),
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'oops'"))
-			})
+			//It("should import all secrets from directory and retain original key names", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams(nil),
+			//	)
+			//	Expect(err).ToNot(HaveOccurred())
+			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+			//})
+			//It("should import only specified secrets from directory and name them appropriately", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams(
+			//			[]interface{}{
+			//				"ping",
+			//				map[string]string{"ying": "yingling"},
+			//			}),
+			//	)
+			//	Expect(err).ToNot(HaveOccurred())
+			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong", "yingling": "yang"})
+			//	vaultPathDoesNotContainUnexpectedKeys([]string{"this"})
+			//})
+			//It("should import multiple secrets from directory and retain the original key names", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams([]interface{}{"ying", "this"}),
+			//	)
+			//	Expect(err).ToNot(HaveOccurred())
+			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ying": "yang", "this": "that"})
+			//	vaultPathDoesNotContainUnexpectedKeys([]string{"ping"})
+			//})
+			//It("should import one secrets from directory and retain the original key names", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams([]interface{}{"ping"}),
+			//	)
+			//	Expect(err).ToNot(HaveOccurred())
+			//	vaultPathContainsExpectedKeysAndValues(map[string]string{"ping": "pong"})
+			//	vaultPathDoesNotContainUnexpectedKeys([]string{"ying", "this"})
+			//})
+			//It("should fail gracefully if Keys contains a key that doesn't exist", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams([]interface{}{"ping", "sing"}),
+			//	)
+			//	Expect(err).To(HaveOccurred())
+			//	Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'sing'"))
+			//})
+			//It("\"should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
+			//	err := createSecretsAndCallOutFunction(
+			//		secretsBytes,
+			//		ocParams(
+			//			[]interface{}{
+			//				map[string]string{"ping": "pong", "oops": "dang"},
+			//			}),
+			//	)
+			//	Expect(err).To(HaveOccurred())
+			//	Expect(err.Error()).To(BeEquivalentTo("Specified keys not found: 'oops'"))
+			//})
 		})
 	})
 

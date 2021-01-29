@@ -12,7 +12,14 @@ import (
 type OutParams struct {
 	Path   string        `mapstructure:"path"`
 	Prefix string        `mapstructure:"prefix"`
-	Keys   []interface{} `mapstructure:"keys"`
+	Keys   []interface{} `mapstructure:"keys"` //this will go away
+	Steves []Steve       `mapstructure:"steves"`
+}
+
+type Steve struct {
+	Name string        `mapstructure:"name"`
+	Dest string        `mapstructure:"dest"`
+	Keys []interface{} `mapstructure:"keys"`
 }
 
 type Source struct {
@@ -40,6 +47,11 @@ func parseOutParams(p oc.Params) (OutParams, error) {
 	err := mapstructure.Decode(p, &result)
 	if err := validateField("path", result.Path); err != nil {
 		return OutParams{}, err
+	}
+	for i := 0; i < len(result.Steves); i++ {
+		if result.Steves[i].Dest == "" {
+			result.Steves[i].Dest = result.Steves[i].Name
+		}
 	}
 	return result, err
 }
