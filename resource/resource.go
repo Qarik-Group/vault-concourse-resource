@@ -162,31 +162,31 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 
 	rootDir := filepath.Join(inputDirectory, p.Path)
 
-	for _, steve := range p.Steves {
+	for _, secretMap := range p.SecretMaps {
 
-		nameDir := filepath.Join(rootDir, steve.Name)
-		files, err := listFilesUnder(nameDir)
+		sourceDir := filepath.Join(rootDir, secretMap.Source)
+		files, err := listFilesUnder(sourceDir)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		for _, secretFile := range files {
-			secret, err := createSecret(nameDir, secretFile)
+			secret, err := createSecret(sourceDir, secretFile)
 			if err != nil {
 				return nil, nil, err
 			}
 
-			err = validate(secret, steve.Keys)
+			err = validate(secret, secretMap.Keys)
 			if err != nil {
 				return nil, nil, err
 			}
 
-			err = filterAndRenameKeys(secret, steve.Keys)
+			err = filterAndRenameKeys(secret, secretMap.Keys)
 			if err != nil {
 				return nil, nil, err
 			}
 
-			err = copySecretToVault(r.client, p.Prefix, steve.Dest, secretFile, secret)
+			err = copySecretToVault(r.client, p.Prefix, secretMap.Dest, secretFile, secret)
 			if err != nil {
 				return nil, nil, err
 			}

@@ -10,16 +10,15 @@ import (
 
 // Recursively read all files from path and write to vault
 type OutParams struct {
-	Path   string  `mapstructure:"path"`
-	Prefix string  `mapstructure:"prefix"`
-	Steves []Steve `mapstructure:"steves"`
+	Path       string      `mapstructure:"path"`
+	Prefix     string      `mapstructure:"prefix"`
+	SecretMaps []SecretMap `mapstructure:"secret_maps"`
 }
 
-// TODO name this SourceAndDest. Rename Name to SourcePath & Dest to DestPath
-type Steve struct {
-	Name string        `mapstructure:"name"`
-	Dest string        `mapstructure:"dest"`
-	Keys []interface{} `mapstructure:"keys"`
+type SecretMap struct {
+	Source string        `mapstructure:"source"`
+	Dest   string        `mapstructure:"dest"`
+	Keys   []interface{} `mapstructure:"keys"`
 }
 
 type Source struct {
@@ -48,15 +47,15 @@ func parseOutParams(p oc.Params) (OutParams, error) {
 	if err := validateField("path", result.Path); err != nil {
 		return OutParams{}, err
 	}
-	if len(result.Steves) == 0 {
+	if len(result.SecretMaps) == 0 {
 		return OutParams{}, fmt.Errorf("Please provide a source for the secret")
 	}
-	for i := 0; i < len(result.Steves); i++ {
-		if result.Steves[i].Name == "" {
+	for i := 0; i < len(result.SecretMaps); i++ {
+		if result.SecretMaps[i].Source == "" {
 			return OutParams{}, fmt.Errorf("Please provide a source for the secret")
 		}
-		if result.Steves[i].Dest == "" {
-			result.Steves[i].Dest = result.Steves[i].Name
+		if result.SecretMaps[i].Dest == "" {
+			result.SecretMaps[i].Dest = result.SecretMaps[i].Source
 		}
 	}
 	return result, err
