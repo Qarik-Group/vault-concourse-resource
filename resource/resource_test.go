@@ -260,7 +260,7 @@ var _ = Describe("Resource", func() {
 				vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"ying": "yang", "lookat": "that"})
 				vaultPathDoesNotContainUnexpectedKeys(expectedPath2, []string{"ping"})
 			})
-			It("should fail gracefully if no name is specified", func() {
+			It("should fail gracefully if no source is specified", func() {
 				secretMaps := createSecretMaps("", "", nil)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).To(HaveOccurred())
