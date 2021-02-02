@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -162,6 +163,12 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 
 	rootDir := filepath.Join(inputDirectory, p.Path)
 
+	if p.SecretMaps == nil {
+		var sm SecretMap
+		sm.Source = ""
+		p.SecretMaps = []SecretMap{sm}
+	}
+
 	for _, secretMap := range p.SecretMaps {
 
 		sourceDir := filepath.Join(rootDir, secretMap.Source)
@@ -176,12 +183,17 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 				return nil, nil, err
 			}
 
-			err = validate(secret, secretMap.Keys)
+			finalKeys, err := getFinalKeys(secretMap.Keys)
 			if err != nil {
 				return nil, nil, err
 			}
 
-			err = filterAndRenameKeys(secret, secretMap.Keys)
+			err = validate(secret, finalKeys)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			err = filterAndRenameKeys(secret, finalKeys)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -234,37 +246,59 @@ func createSecret(rootDir string, secretFile string) (*sv.Secret, error) {
 	return secret, nil
 }
 
-func validate(secret *sv.Secret, keys []interface{}) error {
-	finalKeys := getFinalKeys(keys)
-	ok := true
-	message := "Specified keys not found:"
-	for key := range finalKeys {
+func validate(secret *sv.Secret, finalKeys map[string]string) error {
+	aKeyIsMissing := false
+	missingKeys := []string{}
+	keys := make([]string, 0, len(finalKeys))
+	values := make([]string, 0, len(finalKeys))
+	var sb strings.Builder
+	for key, value := range finalKeys {
+		keys = append(keys, key)
+		values = append(values, value)
 		if !secret.Has(key) {
-			ok = false
-			message += fmt.Sprintf(" '%s'", key)
+			aKeyIsMissing = true
+			missingKeys = append(missingKeys, key)
 		}
 	}
-	if !ok {
-		return fmt.Errorf(message)
+
+	illegalKeys := []string{}
+	illegalKeysFound := false
+	for _, value := range values {
+		for _, key := range keys {
+			if key == value {
+				illegalKeys = append(illegalKeys, key)
+			}
+		}
 	}
+	if illegalKeysFound {
+		sb.WriteString("Circular reference trying to rename keys: ")
+		sb.WriteString(strings.Join(illegalKeys, ","))
+		return fmt.Errorf(sb.String())
+	}
+
+	if aKeyIsMissing {
+		sb.WriteString("Specified keys not found: ")
+		sb.WriteString(strings.Join(missingKeys, ","))
+		return fmt.Errorf(sb.String())
+	}
+
 	return nil
 }
 
-func filterAndRenameKeys(secret *sv.Secret, keys []interface{}) error {
-	if len(keys) == 0 {
+func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
+	if len(finalKeys) == 0 {
 		return nil
 	}
-	finalKeys := getFinalKeys(keys)
 	for _, currentKey := range secret.Keys() {
-		finalKey, isFinalKey := finalKeys[currentKey]
-		if isFinalKey {
+		finalKey, exists := finalKeys[currentKey]
+		if exists {
 			value := secret.Get(currentKey)
 			err := secret.Set(finalKey, value, false)
 			if err != nil {
 				return err
 			}
 		}
-		if (!isFinalKey) || (finalKey != currentKey) {
+		if (!exists) || (finalKey != currentKey) {
 			secret.Delete(currentKey)
 		}
 	}
@@ -276,7 +310,7 @@ func copySecretToVault(client *sv.Vault, prefix string, dest string, secretPath 
 	return client.Write(finalDest, secret)
 }
 
-func getFinalKeys(keys []interface{}) map[string]string {
+func getFinalKeys(keys []interface{}) (map[string]string, error) {
 	finalKeys := map[string]string{}
 	for _, key := range keys {
 		switch v := key.(type) {
@@ -284,6 +318,9 @@ func getFinalKeys(keys []interface{}) map[string]string {
 			keyString := fmt.Sprintf("%v", key)
 			finalKeys[keyString] = keyString
 		case map[string]string:
+			if len(v) > 1 {
+				return nil, fmt.Errorf("Only one key/value pair can be specified in %s", v)
+			}
 			for key, value := range v {
 				finalKeys[key] = value
 			}
@@ -291,5 +328,5 @@ func getFinalKeys(keys []interface{}) map[string]string {
 			// do nothing
 		}
 	}
-	return finalKeys
+	return finalKeys, nil
 }

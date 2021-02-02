@@ -63,18 +63,28 @@ var _ = Describe("Resource", func() {
 		return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
 	}
 
+	writeFile := func(secretDir string) {
+		err := os.MkdirAll(secretDir, 0775)
+		Expect(err).ToNot(HaveOccurred())
+		filename := filepath.Join(secretDir, "othersecrets")
+		ioutil.WriteFile(filename, []byte(secretsBytes), 0644)
+	}
+
 	createSecretsAndCallOutFunction := func(secretMaps []interface{}) error {
 		params := ocParams(secretMaps)
 		inDir := filepath.Join(home, "in")
-		secretMapsParam := params["secret_maps"].([]interface{})
-		for _, secretMapParam := range secretMapsParam {
-			secretMapParamMap := secretMapParam.(map[string]interface{})
-			sourcePath := (secretMapParamMap["source"]).(string)
-			secretDir := filepath.Join(inDir, params["path"].(string), sourcePath)
-			err := os.MkdirAll(secretDir, 0775)
-			Expect(err).ToNot(HaveOccurred())
-			filename := filepath.Join(secretDir, "othersecrets")
-			ioutil.WriteFile(filename, []byte(secretsBytes), 0644)
+
+		if secretMaps != nil {
+			secretMapsParam := params["secret_maps"].([]interface{})
+			for _, secretMapParam := range secretMapsParam {
+				secretMapParamMap := secretMapParam.(map[string]interface{})
+				sourcePath := (secretMapParamMap["source"]).(string)
+				secretDir := filepath.Join(inDir, params["path"].(string), sourcePath)
+				writeFile(secretDir)
+			}
+		} else {
+			secretDir := filepath.Join(inDir, params["path"].(string))
+			writeFile(secretDir)
 		}
 
 		_, _, err := r.Out(inDir, oc.Source{
@@ -173,6 +183,12 @@ var _ = Describe("Resource", func() {
 	})
 	Describe("Out", func() {
 		Context("given a vault with secrets", func() {
+			It("should import all keys and write them back to the same path when no secret_map is provided", func() {
+				err := createSecretsAndCallOutFunction(nil)
+				Expect(err).ToNot(HaveOccurred())
+				expectedPath := ""
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+			})
 			It("should import all keys and write them back to the same path name, retaining original key names", func() {
 				secretMaps := createSecretMaps("/some/place", "", nil)
 				err := createSecretsAndCallOutFunction(secretMaps)
@@ -200,6 +216,7 @@ var _ = Describe("Resource", func() {
 				keys := []interface{}{
 					"ping",
 					map[string]string{"ying": "yingling"},
+					map[string]string{"this": "all"},
 				}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
@@ -249,32 +266,40 @@ var _ = Describe("Resource", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(BeEquivalentTo("Please provide a source for the secret"))
 			})
-			It("should fail gracefully if no secretMaps are specified", func() {
-				secretMaps := []interface{}{}
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("Please provide a source for the secret"))
-			})
 			It("should fail gracefully if Keys contains a key that doesn't exist", func() {
 				keys := []interface{}{"ping", "king", "ting"}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
-				Expect(err.Error()).To(ContainSubstring("'king'"))
-				Expect(err.Error()).To(ContainSubstring("'ting'"))
+				Expect(err.Error()).To(ContainSubstring("king"))
+				Expect(err.Error()).To(ContainSubstring("ting"))
 			})
 			It("should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
 				keys := []interface{}{
-					map[string]string{"ping": "pong", "oops": "dang", "king": "queen"},
+					map[string]string{"ping": "pong"},
+					map[string]string{"oops": "dang"},
+					map[string]string{"king": "queen"},
 				}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
-				Expect(err.Error()).To(ContainSubstring("'oops'"))
-				Expect(err.Error()).To(ContainSubstring("'king'"))
-				Expect(err.Error()).NotTo(ContainSubstring("'ping'"))
+				Expect(err.Error()).To(ContainSubstring("oops"))
+				Expect(err.Error()).To(ContainSubstring("king"))
+				Expect(err.Error()).NotTo(ContainSubstring("ping"))
+			})
+			It("should fail gracefully if Keys contains map with multiple elements", func() {
+				keys := []interface{}{
+					"ping",
+					map[string]string{"ying": "yingling", "oh": "no"},
+				}
+				secretMaps := createSecretMaps("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(secretMaps)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("Only one key/value pair can be specified in"))
+				Expect(err.Error()).To(ContainSubstring("oh:no"))
+				Expect(err.Error()).To(ContainSubstring("ying:yingling"))
 			})
 		})
 	})

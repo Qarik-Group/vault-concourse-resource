@@ -47,9 +47,6 @@ func parseOutParams(p oc.Params) (OutParams, error) {
 	if err := validateField("path", result.Path); err != nil {
 		return OutParams{}, err
 	}
-	if len(result.SecretMaps) == 0 {
-		return OutParams{}, fmt.Errorf("Please provide a source for the secret")
-	}
 	for i := 0; i < len(result.SecretMaps); i++ {
 		if result.SecretMaps[i].Source == "" {
 			return OutParams{}, fmt.Errorf("Please provide a source for the secret")
