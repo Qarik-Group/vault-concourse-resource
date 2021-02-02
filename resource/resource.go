@@ -164,9 +164,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	rootDir := filepath.Join(inputDirectory, p.Path)
 
 	if p.SecretMaps == nil {
-		var sm SecretMap
-		sm.Source = ""
-		p.SecretMaps = []SecretMap{sm}
+		p.SecretMaps = []SecretMap{SecretMap{Source: ""}}
 	}
 
 	for _, secretMap := range p.SecretMaps {
@@ -247,6 +245,9 @@ func createSecret(rootDir string, secretFile string) (*sv.Secret, error) {
 }
 
 func validate(secret *sv.Secret, finalKeys map[string]string) error {
+	if len(finalKeys) == 0 {
+		return nil
+	}
 	aKeyIsMissing := false
 	missingKeys := []string{}
 	keys := make([]string, 0, len(finalKeys))
@@ -305,9 +306,9 @@ func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
 	return nil
 }
 
-func copySecretToVault(client *sv.Vault, prefix string, dest string, secretPath string, secret *sv.Secret) error {
-	finalDest := filepath.Join(prefix, dest, secretPath)
-	return client.Write(finalDest, secret)
+func copySecretToVault(client *sv.Vault, prefix string, dest string, secretName string, secret *sv.Secret) error {
+	finalVaultPath := filepath.Join(prefix, dest, secretName)
+	return client.Write(finalVaultPath, secret)
 }
 
 func getFinalKeys(keys []interface{}) (map[string]string, error) {
