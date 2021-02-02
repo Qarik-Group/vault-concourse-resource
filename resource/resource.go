@@ -163,45 +163,49 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 
 	rootDir := filepath.Join(inputDirectory, p.Path)
 
-	if p.SecretMaps == nil {
-		p.SecretMaps = []SecretMap{SecretMap{Source: ""}}
+	files, err := listFilesUnder(rootDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(p.SecretMaps) == 0 {
+		for _, file := range files {
+			p.SecretMaps = append(p.SecretMaps, SecretMap{Source: file})
+		}
 	}
 
 	for _, secretMap := range p.SecretMaps {
+		if secretMap.Dest == "" {
+			secretMap.Dest = secretMap.Source
+		}
 
-		sourceDir := filepath.Join(rootDir, secretMap.Source)
-		files, err := listFilesUnder(sourceDir)
+		sourceFile := filepath.Join(rootDir, secretMap.Source)
+
+		secret, err := createSecret(sourceFile)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		for _, secretFile := range files {
-			secret, err := createSecret(sourceDir, secretFile)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			finalKeys, err := getFinalKeys(secretMap.Keys)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			err = validate(secret, finalKeys)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			err = filterAndRenameKeys(secret, finalKeys)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			err = copySecretToVault(r.client, p.Prefix, secretMap.Dest, secretFile, secret)
-			if err != nil {
-				return nil, nil, err
-			}
-
+		finalKeys, err := getFinalKeys(secretMap.Keys)
+		if err != nil {
+			return nil, nil, err
 		}
+
+		err = validate(secret, finalKeys)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = filterAndRenameKeys(secret, finalKeys)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		err = copySecretToVault(r.client, p.Prefix, secretMap.Dest, secret)
+		if err != nil {
+			return nil, nil, err
+		}
+
 	}
 	// Both `version` and `metadata` may be empty. In this case, we are returning
 	// `version` retrieved from the file created by `In`, while `metadata` is empty.
@@ -230,8 +234,8 @@ func listFilesUnder(rootDir string) ([]string, error) {
 	return ret, err
 }
 
-func createSecret(rootDir string, secretFile string) (*sv.Secret, error) {
-	srcFile, err := os.Open(filepath.Join(rootDir, secretFile))
+func createSecret(secretFile string) (*sv.Secret, error) {
+	srcFile, err := os.Open(secretFile)
 	if err != nil {
 		return nil, fmt.Errorf("Error reading source file '%s': %s", secretFile, err)
 	}
@@ -306,8 +310,8 @@ func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
 	return nil
 }
 
-func copySecretToVault(client *sv.Vault, prefix string, dest string, secretName string, secret *sv.Secret) error {
-	finalVaultPath := filepath.Join(prefix, dest, secretName)
+func copySecretToVault(client *sv.Vault, prefix string, dest string, secret *sv.Secret) error {
+	finalVaultPath := filepath.Join(prefix, dest)
 	return client.Write(finalVaultPath, secret)
 }
 
@@ -316,8 +320,7 @@ func getFinalKeys(keys []interface{}) (map[string]string, error) {
 	for _, key := range keys {
 		switch v := key.(type) {
 		case string:
-			keyString := fmt.Sprintf("%v", key)
-			finalKeys[keyString] = keyString
+			finalKeys[v] = v
 		case map[string]string:
 			if len(v) > 1 {
 				return nil, fmt.Errorf("Only one key/value pair can be specified in %s", v)

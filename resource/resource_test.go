@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
@@ -27,6 +28,7 @@ var _ = Describe("Resource", func() {
 	)
 
 	const secretsBytes = `{"ping":"pong", "this":"that", "ying":"yang"}`
+	const defaultSecretName = "some_secret"
 	const prefix = "secret"
 
 	safe := func(home string, args ...string) *exec.Cmd {
@@ -63,11 +65,13 @@ var _ = Describe("Resource", func() {
 		return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
 	}
 
-	writeFile := func(secretDir string) {
+	writeFile := func(secretName string) {
+		secretNameSplit := strings.Split(secretName, "/")
+		nameOnly := secretNameSplit[len(secretNameSplit)-1]
+		secretDir := strings.TrimSuffix(secretName, "/"+nameOnly)
 		err := os.MkdirAll(secretDir, 0775)
 		Expect(err).ToNot(HaveOccurred())
-		filename := filepath.Join(secretDir, "othersecrets")
-		ioutil.WriteFile(filename, []byte(secretsBytes), 0644)
+		ioutil.WriteFile(secretName, []byte(secretsBytes), 0644)
 	}
 
 	createSecretsAndCallOutFunction := func(secretMaps []interface{}) error {
@@ -83,7 +87,7 @@ var _ = Describe("Resource", func() {
 				writeFile(secretDir)
 			}
 		} else {
-			secretDir := filepath.Join(inDir, params["path"].(string))
+			secretDir := filepath.Join(inDir, params["path"].(string), defaultSecretName)
 			writeFile(secretDir)
 		}
 
@@ -106,7 +110,7 @@ var _ = Describe("Resource", func() {
 
 	vaultPathContainsExpectedKeysAndValues := func(pathName string, expected map[string]string) {
 		for key, value := range expected {
-			result, err := safeGet(filepath.Join(prefix, pathName, "othersecrets") + ":" + key)
+			result, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(string(result)).To(Equal(value + "\n"))
 		}
@@ -114,7 +118,7 @@ var _ = Describe("Resource", func() {
 
 	vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
 		for _, key := range unexpected {
-			_, err := safeGet(filepath.Join(prefix, pathName, "othersecrets") + ":" + key)
+			_, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
 			Expect(err).To(HaveOccurred())
 		}
 	}
@@ -186,7 +190,7 @@ var _ = Describe("Resource", func() {
 			It("should import all keys and write them back to the same path when no secret_map is provided", func() {
 				err := createSecretsAndCallOutFunction(nil)
 				Expect(err).ToNot(HaveOccurred())
-				expectedPath := ""
+				expectedPath := defaultSecretName
 				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
 			})
 			It("should import all keys and write them back to the same path name, retaining original key names", func() {
