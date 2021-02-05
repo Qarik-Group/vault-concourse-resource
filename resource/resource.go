@@ -315,9 +315,6 @@ func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
 				return err
 			}
 		}
-		if (!exists) || (finalKey != currentKey) {
-			secret.Delete(currentKey)
-		}
 	}
 	return nil
 }
