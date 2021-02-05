@@ -71,7 +71,8 @@ var _ = Describe("Resource", func() {
 		secretDir := strings.TrimSuffix(secretName, "/"+nameOnly)
 		err := os.MkdirAll(secretDir, 0775)
 		Expect(err).ToNot(HaveOccurred())
-		ioutil.WriteFile(secretName, []byte(secretsBytes), 0644)
+		err = ioutil.WriteFile(secretName, []byte(secretsBytes), 0644)
+		Expect(err).ToNot(HaveOccurred())
 	}
 
 	createSecretsAndCallOutFunction := func(secretMaps []interface{}) error {

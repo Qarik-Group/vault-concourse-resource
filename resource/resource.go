@@ -57,6 +57,14 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 	if err != nil {
 		return nil, err
 	}
+	ocVersion, err := r.constructVersion(s, version)
+	if err != nil {
+		return nil, err
+	}
+	return []oc.Version{ocVersion}, nil
+}
+
+func (r *Resource) constructVersion(s Source, version oc.Version) (oc.Version, error) {
 	secrets := sv.Secrets{}
 	for _, p := range s.Paths {
 		s, err := r.client.ConstructSecrets(p, sv.TreeOpts{
@@ -72,7 +80,7 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 	for _, s := range secrets {
 		export[s.Path] = s.Versions[0].Data
 	}
-	raw, err := json.Marshal(&export)
+	raw, _ := json.Marshal(&export)
 	newVersion := newVersion(raw, s.URL)
 	if version != nil {
 		oldVersion, err := parseVersion(version)
@@ -80,10 +88,10 @@ func (r *Resource) Check(source oc.Source, version oc.Version, env oc.Environmen
 			return nil, err
 		}
 		if oldVersion.equal(newVersion) {
-			return []oc.Version{}, nil
+			return oc.Version{}, nil
 		}
 	}
-	return []oc.Version{newVersion.toOCVersion()}, nil
+	return newVersion.toOCVersion(), nil
 }
 
 // In implements the ofcourse.Resource In method, corresponding to the /opt/resource/in command.
@@ -208,9 +216,13 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 
 	}
 	// Both `version` and `metadata` may be empty. In this case, we are returning
-	// `version` retrieved from the file created by `In`, while `metadata` is empty.
-	metadata := oc.Metadata{}
-	return nil, metadata, nil
+	// `version` just as we do from `Check`, while `metadata` is empty.
+	ocVersion, err := r.constructVersion(s, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	metadata := oc.Metadata{{Name: "Version", Value: fmt.Sprint(ocVersion)}}
+	return ocVersion, metadata, nil
 }
 
 func listFilesUnder(rootDir string) ([]string, error) {
