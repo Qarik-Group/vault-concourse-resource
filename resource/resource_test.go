@@ -294,6 +294,29 @@ var _ = Describe("Resource", func() {
 				Expect(err.Error()).To(ContainSubstring("oh:no"))
 				Expect(err.Error()).To(ContainSubstring("ying:yingling"))
 			})
+			It("should import secrets from directory (original test for backward compatibility)", func() {
+				inDir := filepath.Join(home, "in")
+				secretDir := filepath.Join(inDir, "root/secret")
+				err := os.MkdirAll(secretDir, 0775)
+				Expect(err).ToNot(HaveOccurred())
+				ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(`{"ping":"pong"}`), 0644)
+				_, _, err = r.Out(inDir, oc.Source{
+					"url":   url,
+					"token": token,
+					"paths": []string{
+						"/secret/handshake",
+					},
+				}, oc.Params{
+					"path":   "root/secret",
+					"prefix": "secret",
+				}, env, testLogger)
+				Expect(err).ToNot(HaveOccurred())
+				s := safe(home, "get", "/secret/othersecrets:ping")
+				s.Stdout = nil
+				result, err := s.Output()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(string(result)).To(Equal("pong\n"))
+			})
 		})
 	})
 
