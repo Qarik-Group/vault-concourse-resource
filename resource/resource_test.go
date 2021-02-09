@@ -109,11 +109,25 @@ var _ = Describe("Resource", func() {
 		return s.Output()
 	}
 
+	safeSet := func(path, key, value string) ([]byte, error) {
+		keyAndValue := strings.Join([]string{key, "=", value}, "")
+		s := safe(home, "set", path, keyAndValue)
+		s.Stdout = nil
+		return s.Output()
+	}
+
 	vaultPathContainsExpectedKeysAndValues := func(pathName string, expected map[string]string) {
 		for key, value := range expected {
 			result, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(string(result)).To(Equal(value + "\n"))
+		}
+	}
+
+	vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
+		for _, key := range unexpected {
+			_, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
+			Expect(err).To(HaveOccurred())
 		}
 	}
 
@@ -207,40 +221,43 @@ var _ = Describe("Resource", func() {
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).ToNot(HaveOccurred())
 				expectedPath := (secretMaps[0].(map[string]interface{})["source"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "ying": "yang", "this": "that"})
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "ying": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
 			})
 			It("should import only specified keys, rename them appropriately and write them back to the same path name", func() {
 				keys := []interface{}{
 					"ping",
-					map[string]string{"ying": "yingling"},
-					map[string]string{"this": "all"},
+					map[string]interface{}{"ying": "yingling"},
+					map[string]interface{}{"this": "all"},
 				}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).ToNot(HaveOccurred())
 				expectedPath := (secretMaps[0].(map[string]interface{})["source"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang", "this": "that"})
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
 			})
 			It("should import only specified keys, rename them appropriately and write them back to the destination", func() {
 				keys := []interface{}{
 					"ping",
-					map[string]string{"ying": "yingling"},
+					map[string]interface{}{"ying": "yingling"},
 				}
 				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).ToNot(HaveOccurred())
 				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang", "this": "that"})
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
 			})
 			It("should import multiple secrets, rename them appropriately and write them back to the destination", func() {
 				keys := []interface{}{
 					"ping",
-					map[string]string{"ying": "yingling"},
+					map[string]interface{}{"ying": "yingling"},
 				}
 				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
 				keys2 := []interface{}{
 					"ying",
-					map[string]string{"this": "lookat"},
+					map[string]interface{}{"this": "lookat"},
 				}
 				secretMaps2 := createSecretMaps("/other/place", "/othernew/place", keys2)
 				secretMaps = append(secretMaps, secretMaps2[0])
@@ -248,10 +265,32 @@ var _ = Describe("Resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang", "this": "that"})
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
 
 				expectedPath2 := (secretMaps[1].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"ying": "yang", "lookat": "that", "ping": "pong"})
+				vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"ying": "yang", "lookat": "that"})
+				vaultPathDoesNotContainUnexpectedKeys(expectedPath2, []string{"ping"})
+			})
+			It("should import  secrets, rename them appropriately and write them to the same destination without removing existing keys", func() {
+				keys := []interface{}{
+					map[string]interface{}{"ying": "yingling"},
+				}
+				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
+				keys2 := []interface{}{
+					map[string]interface{}{"this": "lookat"},
+				}
+				secretMaps2 := createSecretMaps("/other/place", "/new/place", keys2)
+				secretMaps = append(secretMaps, secretMaps2[0])
+
+				_, err := safeSet("/secret/new/place", "hi", "there")
+				Expect(err).ToNot(HaveOccurred())
+
+				err = createSecretsAndCallOutFunction(secretMaps)
+				Expect(err).ToNot(HaveOccurred())
+
+				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
+				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"yingling": "yang", "lookat": "that", "hi": "there"})
 			})
 			It("should fail gracefully if no source is specified", func() {
 				secretMaps := createSecretMaps("", "", nil)
@@ -270,9 +309,9 @@ var _ = Describe("Resource", func() {
 			})
 			It("should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
 				keys := []interface{}{
-					map[string]string{"ping": "pong"},
-					map[string]string{"oops": "dang"},
-					map[string]string{"king": "queen"},
+					map[string]interface{}{"ping": "pong"},
+					map[string]interface{}{"oops": "dang"},
+					map[string]interface{}{"king": "queen"},
 				}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
@@ -285,7 +324,7 @@ var _ = Describe("Resource", func() {
 			It("should fail gracefully if Keys contains map with multiple elements", func() {
 				keys := []interface{}{
 					"ping",
-					map[string]string{"ying": "yingling", "oh": "no"},
+					map[string]interface{}{"ying": "yingling", "oh": "no"},
 				}
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)

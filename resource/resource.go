@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
@@ -209,7 +210,10 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		err = copySecretToVault(r.client, p.Prefix, secretMap.Dest, secret)
+		finalVaultPath := filepath.Join(p.Prefix, secretMap.Dest)
+		retainExistingKeys(r.client, finalVaultPath, secret)
+
+		err = copySecretToVault(r.client, finalVaultPath, secret)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -315,13 +319,26 @@ func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
 				return err
 			}
 		}
+		if (!exists) || (finalKey != currentKey) {
+			secret.Delete(currentKey)
+		}
 	}
 	return nil
 }
 
-func copySecretToVault(client *sv.Vault, prefix string, dest string, secret *sv.Secret) error {
-	finalVaultPath := filepath.Join(prefix, dest)
-	return client.Write(finalVaultPath, secret)
+func copySecretToVault(client *sv.Vault, finalVaultPath string, newSecret *sv.Secret) error {
+	return client.Write(finalVaultPath, newSecret)
+}
+
+func retainExistingKeys(client *sv.Vault, finalVaultPath string, newSecret *sv.Secret) {
+	existingSecret, err := client.Read(finalVaultPath)
+	if err == nil {
+		for _, existingKey := range existingSecret.Keys() {
+			if !newSecret.Has(existingKey) {
+				newSecret.Set(existingKey, existingSecret.Get(existingKey), false)
+			}
+		}
+	}
 }
 
 func getFinalKeys(keys []interface{}) (map[string]string, error) {
@@ -330,15 +347,15 @@ func getFinalKeys(keys []interface{}) (map[string]string, error) {
 		switch v := key.(type) {
 		case string:
 			finalKeys[v] = v
-		case map[string]string:
+		case map[string]interface{}:
 			if len(v) > 1 {
 				return nil, fmt.Errorf("Only one key/value pair can be specified in %s", v)
 			}
 			for key, value := range v {
-				finalKeys[key] = value
+				finalKeys[key] = value.(string)
 			}
 		default:
-			// do nothing
+			return nil, fmt.Errorf("The secret_map keys field can contain combinations of strings and key/value pairs. It cannot contain %s", reflect.TypeOf(key))
 		}
 	}
 	return finalKeys, nil
