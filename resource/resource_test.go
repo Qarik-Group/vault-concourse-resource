@@ -303,7 +303,7 @@ var _ = Describe("Resource", func() {
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
+				Expect(err.Error()).To(ContainSubstring("Specified keys not found in input for secret"))
 				Expect(err.Error()).To(ContainSubstring("king"))
 				Expect(err.Error()).To(ContainSubstring("ting"))
 			})
@@ -316,10 +316,24 @@ var _ = Describe("Resource", func() {
 				secretMaps := createSecretMaps("/some/place", "", keys)
 				err := createSecretsAndCallOutFunction(secretMaps)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Specified keys not found:"))
+				Expect(err.Error()).To(ContainSubstring("Specified keys not found in input for secret"))
 				Expect(err.Error()).To(ContainSubstring("oops"))
 				Expect(err.Error()).To(ContainSubstring("king"))
 				Expect(err.Error()).NotTo(ContainSubstring("ping"))
+			})
+			It("should fail gracefully if a circular reference exists trying to rename keys", func() {
+				keys := []interface{}{
+					map[string]interface{}{"ping": "pong"},
+					map[string]interface{}{"pong": "pang"},
+				}
+				secretMaps := createSecretMaps("/some/place", "", keys)
+				err := createSecretsAndCallOutFunction(secretMaps)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("Circular reference trying to rename the following keys for secret"))
+				Expect(err.Error()).To(ContainSubstring("pong"))
+				Expect(err.Error()).NotTo(ContainSubstring("ping"))
+				Expect(err.Error()).NotTo(ContainSubstring("this"))
+				Expect(err.Error()).NotTo(ContainSubstring(" ying"))
 			})
 			It("should fail gracefully if Keys contains map with multiple elements", func() {
 				keys := []interface{}{

@@ -272,30 +272,35 @@ func validate(secret *sv.Secret, finalKeys map[string]string, source string) err
 		return nil
 	}
 
-	keys := make([]string, 0, len(finalKeys))
-	values := make([]string, 0, len(finalKeys))
+	keysFromExistingSecret := make([]string, 0, len(finalKeys))
+	keysForNewSecret := make([]string, 0, len(finalKeys))
 
 	missingKeys := []string{}
-	for key, value := range finalKeys {
-		keys = append(keys, key)
-		values = append(values, value)
-		if !secret.Has(key) {
-			missingKeys = append(missingKeys, key)
+	for keyFromExistingSecret, keyForNewSecret := range finalKeys {
+		renamingKey := keyFromExistingSecret != keyForNewSecret
+		if renamingKey {
+			keysFromExistingSecret = append(keysFromExistingSecret, keyFromExistingSecret)
+			keysForNewSecret = append(keysForNewSecret, keyForNewSecret)
+		}
+		if !secret.Has(keyFromExistingSecret) {
+			missingKeys = append(missingKeys, keyFromExistingSecret)
 		}
 	}
 
 	illegalKeys := []string{}
-	for _, value := range values {
-		for _, key := range keys {
-			if key == value {
-				illegalKeys = append(illegalKeys, key)
+	for _, keyForNewSecret := range keysForNewSecret {
+		for _, keyFromExistingSecret := range keysFromExistingSecret {
+			if keyFromExistingSecret == keyForNewSecret {
+				illegalKeys = append(illegalKeys, keyFromExistingSecret)
 			}
 		}
 	}
 
 	var sb strings.Builder
 	if len(illegalKeys) > 0 {
-		sb.WriteString("Circular reference trying to rename keys: ")
+		sb.WriteString("Circular reference trying to rename the following keys for secret ")
+		sb.WriteString(source)
+		sb.WriteString(": ")
 		sb.WriteString(strings.Join(illegalKeys, ","))
 		return fmt.Errorf(sb.String())
 	}
