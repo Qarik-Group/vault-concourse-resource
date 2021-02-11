@@ -81,7 +81,10 @@ func (r *Resource) constructVersion(s Source, version oc.Version) (oc.Version, e
 	for _, s := range secrets {
 		export[s.Path] = s.Versions[0].Data
 	}
-	raw, _ := json.Marshal(&export)
+	raw, err := json.Marshal(&export)
+	if err != nil {
+		return nil, err
+	}
 	newVersion := newVersion(raw, s.URL)
 	if version != nil {
 		oldVersion, err := parseVersion(version)
@@ -200,7 +203,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		err = validate(secret, finalKeys)
+		err = validate(secret, finalKeys, secretMap.Source)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -225,7 +228,7 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 	if err != nil {
 		return nil, nil, err
 	}
-	metadata := oc.Metadata{{Name: "Version", Value: fmt.Sprint(ocVersion)}}
+	metadata := oc.Metadata{}
 	return ocVersion, metadata, nil
 }
 
@@ -264,26 +267,24 @@ func createSecret(secretFile string) (*sv.Secret, error) {
 	return secret, nil
 }
 
-func validate(secret *sv.Secret, finalKeys map[string]string) error {
+func validate(secret *sv.Secret, finalKeys map[string]string, source string) error {
 	if len(finalKeys) == 0 {
 		return nil
 	}
-	aKeyIsMissing := false
-	missingKeys := []string{}
+
 	keys := make([]string, 0, len(finalKeys))
 	values := make([]string, 0, len(finalKeys))
-	var sb strings.Builder
+
+	missingKeys := []string{}
 	for key, value := range finalKeys {
 		keys = append(keys, key)
 		values = append(values, value)
 		if !secret.Has(key) {
-			aKeyIsMissing = true
 			missingKeys = append(missingKeys, key)
 		}
 	}
 
 	illegalKeys := []string{}
-	illegalKeysFound := false
 	for _, value := range values {
 		for _, key := range keys {
 			if key == value {
@@ -291,14 +292,18 @@ func validate(secret *sv.Secret, finalKeys map[string]string) error {
 			}
 		}
 	}
-	if illegalKeysFound {
+
+	var sb strings.Builder
+	if len(illegalKeys) > 0 {
 		sb.WriteString("Circular reference trying to rename keys: ")
 		sb.WriteString(strings.Join(illegalKeys, ","))
 		return fmt.Errorf(sb.String())
 	}
 
-	if aKeyIsMissing {
-		sb.WriteString("Specified keys not found: ")
+	if len(missingKeys) > 0 {
+		sb.WriteString("Specified keys not found in input for secret ")
+		sb.WriteString(source)
+		sb.WriteString(": ")
 		sb.WriteString(strings.Join(missingKeys, ","))
 		return fmt.Errorf(sb.String())
 	}
