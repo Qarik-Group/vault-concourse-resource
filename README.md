@@ -31,6 +31,7 @@ Import all secrets from a directory `path` to assigned vault
 
 * `path`: *Required.* The directory from the exported secrets from the IN step
 * `prefix`: *Optional.* Prefix to use for the output path in vault.
+* `secret_maps`: *Optional* List of secrets to copy and where to put them. Each secret_map has a source, dest and keys field. source is the source of the existing secret to copy, including the path. source is required. dest is where to copy the secret to. dest is optional. keys is a list of which json keys to copy. keys is optional. a key can either be a single string, in which case it retains that key name, or it can be a key/value pair, to specify the existing key name and the renamed key name. If keys is not specified, all keys will be copied. If dest is not specified, source will be used as dest. (see example)
 
 ## Example
 
@@ -63,6 +64,13 @@ jobs:
     params:
       path: vault-concourse-resource/secret
       prefix: secret2
+      secret_maps:
+      - source: secret/move/me/somewhere
+        dest: secret/im/going/here
+        keys:
+          - certificate
+          - foo: bar
+          - beep: boop
 
 ```
 

@@ -4,15 +4,21 @@ package resource
 import (
 	"crypto/sha1"
 	"fmt"
-
 	oc "github.com/cloudboss/ofcourse/ofcourse"
 	"github.com/mitchellh/mapstructure"
 )
 
-// Recursivly read all files from path and write to vault
+// Recursively read all files from path and write to vault
 type OutParams struct {
-	Path   string `mapstructure:"path"`
-	Prefix string `mapstructure:"prefix"`
+	Path       string      `mapstructure:"path"`
+	Prefix     string      `mapstructure:"prefix"`
+	SecretMaps []SecretMap `mapstructure:"secret_maps"`
+}
+
+type SecretMap struct {
+	Source string        `mapstructure:"source"`
+	Dest   string        `mapstructure:"dest"`
+	Keys   []interface{} `mapstructure:"keys"`
 }
 
 type Source struct {
@@ -24,7 +30,6 @@ type Source struct {
 	Namespace string   `mapstructure:"namespace"`
 	Paths     []string `mapstructure:"paths"`
 }
-
 type Version struct {
 	SecretSHA1 string `mapstructure:"secret_sha1"`
 	URL        string `mapstructure:"url"`
@@ -34,20 +39,24 @@ func validateField(field string, values ...string) error {
 	if len(values) == 0 || values[0] == "" {
 		return fmt.Errorf("Missing %s field", field)
 	}
-
 	return nil
 }
-
 func parseOutParams(p oc.Params) (OutParams, error) {
 	var result OutParams
 	err := mapstructure.Decode(p, &result)
 	if err := validateField("path", result.Path); err != nil {
 		return OutParams{}, err
 	}
-
+	for i := 0; i < len(result.SecretMaps); i++ {
+		if result.SecretMaps[i].Source == "" {
+			return OutParams{}, fmt.Errorf("Please provide a source for the secret")
+		}
+		if result.SecretMaps[i].Dest == "" {
+			result.SecretMaps[i].Dest = result.SecretMaps[i].Source
+		}
+	}
 	return result, err
 }
-
 func parseSource(s oc.Source) (Source, error) {
 	var result Source
 	err := mapstructure.Decode(s, &result)
@@ -69,31 +78,25 @@ func parseSource(s oc.Source) (Source, error) {
 	if err := validateField("paths", result.Paths...); err != nil {
 		return Source{}, err
 	}
-
 	return result, err
 }
-
 func (version Version) toOCVersion() oc.Version {
 	return oc.Version{
 		"secret_sha1": version.SecretSHA1,
 		"url":         version.URL,
 	}
 }
-
 func parseVersion(v oc.Version) (Version, error) {
 	var result Version
 	err := mapstructure.Decode(v, &result)
-
 	return result, err
 }
-
 func newVersion(bytesToSha1 []byte, url string) Version {
 	return Version{
 		SecretSHA1: fmt.Sprintf("%x", sha1.Sum(bytesToSha1)),
 		URL:        url,
 	}
 }
-
 func (version Version) equal(v Version) bool {
 	return version.SecretSHA1 == v.SecretSHA1 && version.URL == v.URL
 }
