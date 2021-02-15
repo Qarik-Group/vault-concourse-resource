@@ -1,6 +1,7 @@
 package resource_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 
 	oc "github.com/cloudboss/ofcourse/ofcourse"
+	"github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/starkandwayne/vault-concourse-resource/resource"
@@ -65,32 +67,63 @@ var _ = Describe("Resource", func() {
 		return config.Vaults[config.Current]["url"], config.Vaults[config.Current]["token"]
 	}
 
-	writeFile := func(secretName string) {
-		secretNameSplit := strings.Split(secretName, "/")
-		nameOnly := secretNameSplit[len(secretNameSplit)-1]
-		secretDir := strings.TrimSuffix(secretName, "/"+nameOnly)
-		err := os.MkdirAll(secretDir, 0775)
-		Expect(err).ToNot(HaveOccurred())
-		err = ioutil.WriteFile(secretName, []byte(secretsBytes), 0644)
-		Expect(err).ToNot(HaveOccurred())
+	safeGet := func(keyWithPath string) ([]byte, error) {
+		s := safe(home, "get", keyWithPath)
+		s.Stdout = nil
+		return s.Output()
 	}
 
-	createSecretsAndCallOutFunction := func(secretMaps []interface{}) error {
+	safeSet := func(path string, kv map[string]string) ([]byte, error) {
+		kvArgs := []string{"set", path}
+		for k, v := range kv {
+			kvArgs = append(kvArgs, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		s := safe(home, kvArgs...)
+		s.Stdout = nil
+		return s.Output()
+	}
+
+	seedSecrets := func() {
+		type vaultSecret struct {
+			path   string
+			values map[string]string
+		}
+		values := map[string]string{
+			"ping": "pong",
+			"this": "that",
+			"ying": "yang",
+		}
+		secrets := []vaultSecret{
+			{path: "/some/place", values: values},
+			{path: "/other/place", values: values},
+		}
+
+		resourceRootDir := filepath.Join(home, "in/resource_root_path")
+		for _, secret := range secrets {
+			_, err := safeSet(filepath.Join("secret", secret.path), values)
+			Expect(err).NotTo(HaveOccurred())
+
+			writePath := filepath.Join(resourceRootDir, secret.path)
+			err = os.MkdirAll(filepath.Dir(writePath), 0775)
+			Expect(err).NotTo(HaveOccurred())
+			f, err := os.Create(writePath)
+			Expect(err).NotTo(HaveOccurred())
+			jEnc := json.NewEncoder(f)
+			err = jEnc.Encode(&secret.values)
+			Expect(err).NotTo(HaveOccurred())
+		}
+	}
+
+	cleanupSecrets := func() {
+		Expect(strings.HasPrefix(home, "/tmp")).To(BeTrue())
+		err := os.RemoveAll(home)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	callOutFunction := func(secretMaps []interface{}) error {
 		params := ocParams(secretMaps)
 		inDir := filepath.Join(home, "in")
-
-		if secretMaps != nil {
-			secretMapsParam := params["secret_maps"].([]interface{})
-			for _, secretMapParam := range secretMapsParam {
-				secretMapParamMap := secretMapParam.(map[string]interface{})
-				sourcePath := (secretMapParamMap["source"]).(string)
-				secretDir := filepath.Join(inDir, params["path"].(string), sourcePath)
-				writeFile(secretDir)
-			}
-		} else {
-			secretDir := filepath.Join(inDir, params["path"].(string), defaultSecretName)
-			writeFile(secretDir)
-		}
 
 		_, _, err := r.Out(inDir, oc.Source{
 			"url":   url,
@@ -103,20 +136,11 @@ var _ = Describe("Resource", func() {
 		return err
 	}
 
-	safeGet := func(keyWithPath string) ([]byte, error) {
-		s := safe(home, "get", keyWithPath)
-		s.Stdout = nil
-		return s.Output()
-	}
-
-	safeSet := func(path, key, value string) ([]byte, error) {
-		keyAndValue := strings.Join([]string{key, "=", value}, "")
-		s := safe(home, "set", path, keyAndValue)
-		s.Stdout = nil
-		return s.Output()
-	}
-
 	vaultPathContainsExpectedKeysAndValues := func(pathName string, expected map[string]string) {
+		ginkgo.GinkgoWriter.Write([]byte("testing expected keys and values"))
+		result, err := safeGet(filepath.Join(prefix, pathName))
+		Expect(err).NotTo(HaveOccurred())
+		ginkgo.GinkgoWriter.Write(result)
 		for key, value := range expected {
 			result, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
 			Expect(err).ToNot(HaveOccurred())
@@ -127,7 +151,7 @@ var _ = Describe("Resource", func() {
 	vaultPathDoesNotContainUnexpectedKeys := func(pathName string, unexpected []string) {
 		for _, key := range unexpected {
 			_, err := safeGet(filepath.Join(prefix, pathName) + ":" + key)
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(HaveOccurred(), fmt.Sprintf("found unexpected key: %s", key))
 		}
 	}
 
@@ -139,6 +163,17 @@ var _ = Describe("Resource", func() {
 				"keys":   keys,
 			},
 		}
+	}
+
+	calcExpectedPath := func(src, dest string) string {
+		expectedPath := "some/place"
+		if dest != "" {
+			expectedPath = dest
+		} else if src != "" {
+			expectedPath = src
+		}
+
+		return expectedPath
 	}
 
 	BeforeEach(func() {
@@ -195,180 +230,240 @@ var _ = Describe("Resource", func() {
 	})
 	Describe("Out", func() {
 		Context("given a vault with secrets", func() {
-			It("should import all keys and write them back to the same path when no secret_map is provided", func() {
-				err := createSecretsAndCallOutFunction(nil)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := defaultSecretName
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
-			})
-			It("should import all keys and write them back to the same path name, retaining original key names", func() {
-				secretMaps := createSecretMaps("/some/place", "", nil)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := (secretMaps[0].(map[string]interface{})["source"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
-			})
-			It("should import all keys and write them to the destPath path name, retaining original key names", func() {
-				secretMaps := createSecretMaps("/some/place", "/new/place", nil)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
-			})
-			It("should import only specified keys and write them back to the same path name, retaining original key names", func() {
-				keys := []interface{}{"ping", "ying"}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := (secretMaps[0].(map[string]interface{})["source"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "ying": "yang"})
-				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
-			})
-			It("should import only specified keys, rename them appropriately and write them back to the same path name", func() {
-				keys := []interface{}{
-					"ping",
-					map[string]interface{}{"ying": "yingling"},
-					map[string]interface{}{"this": "all"},
-				}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := (secretMaps[0].(map[string]interface{})["source"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
-				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
-			})
-			It("should import only specified keys, rename them appropriately and write them back to the destination", func() {
-				keys := []interface{}{
-					"ping",
-					map[string]interface{}{"ying": "yingling"},
-				}
-				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
-				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
-				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
-			})
-			It("should import multiple secrets, rename them appropriately and write them back to the destination", func() {
-				keys := []interface{}{
-					"ping",
-					map[string]interface{}{"ying": "yingling"},
-				}
-				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
-				keys2 := []interface{}{
-					"ying",
-					map[string]interface{}{"this": "lookat"},
-				}
-				secretMaps2 := createSecretMaps("/other/place", "/othernew/place", keys2)
-				secretMaps = append(secretMaps, secretMaps2[0])
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
+			var paramSrcPath, paramDestPath string
+			var paramKeys []interface{}
+			var expectedPath string
+			var inputSecretMap []interface{}
+			var skipOutErrCheck bool
+			var outErr error
+			var skipCreateSecretMap bool
 
-				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
-				vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"this"})
+			BeforeEach(func() {
+				paramSrcPath = ""
+				paramDestPath = ""
+				paramKeys = nil
+				inputSecretMap = nil
+				expectedPath = defaultSecretName
+				skipOutErrCheck = false
+				outErr = nil
+				skipCreateSecretMap = false
+				seedSecrets()
+			})
 
-				expectedPath2 := (secretMaps[1].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"ying": "yang", "lookat": "that"})
-				vaultPathDoesNotContainUnexpectedKeys(expectedPath2, []string{"ping"})
+			AfterEach(func() {
+				cleanupSecrets()
 			})
-			It("should import  secrets, rename them appropriately and write them to the same destination without removing existing keys", func() {
-				keys := []interface{}{
-					map[string]interface{}{"ying": "yingling"},
-				}
-				secretMaps := createSecretMaps("/some/place", "/new/place", keys)
-				keys2 := []interface{}{
-					map[string]interface{}{"this": "lookat"},
-				}
-				secretMaps2 := createSecretMaps("/other/place", "/new/place", keys2)
-				secretMaps = append(secretMaps, secretMaps2[0])
 
-				_, err := safeSet("/secret/new/place", "hi", "there")
-				Expect(err).ToNot(HaveOccurred())
+			JustBeforeEach(func() {
+				if !skipCreateSecretMap {
+					inputSecretMap = createSecretMaps(
+						paramSrcPath,
+						paramDestPath,
+						paramKeys,
+					)
+				}
+				jEnc := json.NewEncoder(ginkgo.GinkgoWriter)
+				err := jEnc.Encode(inputSecretMap)
+				Expect(err).NotTo(HaveOccurred())
 
-				err = createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).ToNot(HaveOccurred())
+				outErr = callOutFunction(inputSecretMap)
+				if !skipOutErrCheck {
+					Expect(outErr).NotTo(HaveOccurred())
+				}
+				expectedPath = calcExpectedPath(paramSrcPath, paramDestPath)
+			})
 
-				expectedPath := (secretMaps[0].(map[string]interface{})["dest"]).(string)
-				vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"yingling": "yang", "lookat": "that", "hi": "there"})
+			When("No secret_map is provided", func() {
+				BeforeEach(func() { skipCreateSecretMap = true })
+				It("should import all keys and write them back to the same path", func() {
+					vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+				})
 			})
-			It("should fail gracefully if no source is specified", func() {
-				secretMaps := createSecretMaps("", "", nil)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(BeEquivalentTo("Please provide a source for the secret"))
+
+			When("A single secret path is selected", func() {
+				BeforeEach(func() {
+					paramSrcPath = "/some/place"
+				})
+				When("No dest path is given", func() {
+					When("No key list is given", func() {
+						It("should import all keys and write them back to the same path name, retaining original key names", func() {
+							vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+						})
+					})
+
+					When("A key list with no renames which is a subset of the keys in the source secret is given", func() {
+						BeforeEach(func() { paramKeys = []interface{}{"ping", "ying"} })
+						It("should import only specified keys and write them back to the same path name, retaining original key names", func() {
+							By("copying all the keys in the key list")
+							vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "ying": "yang", "this": "that"})
+						})
+					})
+
+					When("A key list with renames is given", func() {
+						BeforeEach(func() {
+							paramKeys = []interface{}{
+								"ping",
+								map[string]interface{}{"ying": "yingling"},
+								map[string]interface{}{"this": "all"},
+							}
+						})
+
+						It("should rename keys appropriately and write them back to the same path name", func() {
+							By("copying all the keys in the key list")
+							vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang", "all": "that"})
+						})
+					})
+				})
+
+				When("A destination which is different than the src path is selected", func() {
+					BeforeEach(func() { paramDestPath = "/new/place" })
+
+					When("No key list is given", func() {
+						It("should import all keys and write them to the set destination, retaining original key names", func() {
+							vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "this": "that", "ying": "yang"})
+						})
+					})
+
+					When("A key list with renames which is a subset of the keys in the source secret is given", func() {
+						BeforeEach(func() {
+							paramKeys = []interface{}{
+								"ping",
+								map[string]interface{}{"ying": "yingling"},
+							}
+
+							It("should import only specified keys, rename them appropriately and write them to the destination path", func() {
+								By("copying all the keys in the key list")
+								vaultPathContainsExpectedKeysAndValues(expectedPath, map[string]string{"ping": "pong", "yingling": "yang"})
+								By("not copying to any of the destination keys not in the key list")
+								vaultPathDoesNotContainUnexpectedKeys(expectedPath, []string{"yang", "this"})
+							})
+						})
+					})
+				})
 			})
-			It("should fail gracefully if Keys contains a key that doesn't exist", func() {
-				keys := []interface{}{"ping", "king", "ting"}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Specified keys not found in input for secret"))
-				Expect(err.Error()).To(ContainSubstring("king"))
-				Expect(err.Error()).To(ContainSubstring("ting"))
+
+			When("multiple secret maps are specified", func() {
+				var paramKeys1, paramKeys2 []interface{}
+				var expectedPath1, expectedPath2 string
+				const src1, src2 = "/some/place", "/other/place"
+				const dest1, dest2 = "/new/place", "/othernew/place"
+
+				BeforeEach(func() {
+					skipCreateSecretMap = true
+					paramKeys1, paramKeys2 = nil, nil
+					expectedPath1 = dest1
+					expectedPath2 = dest2
+				})
+
+				When("keys are being renamed", func() {
+					BeforeEach(func() {
+						paramKeys1 = []interface{}{
+							"ping",
+							map[string]interface{}{"ying": "yingling"},
+						}
+						paramKeys2 = []interface{}{
+							"ying",
+							map[string]interface{}{"this": "lookat"},
+						}
+						inputSecretMap = append(
+							createSecretMaps(src1, dest1, paramKeys1),
+							createSecretMaps(src2, dest2, paramKeys2)...,
+						)
+					})
+
+					It("should import multiple secrets, rename them appropriately and write them back to the destinations", func() {
+						By("copying all the keys in the key list for the first secret")
+						vaultPathContainsExpectedKeysAndValues(expectedPath1, map[string]string{"ping": "pong", "yingling": "yang"})
+						By("not copying to any of the destination keys not in the key list for the first secret")
+						vaultPathDoesNotContainUnexpectedKeys(expectedPath1, []string{"this"})
+
+						By("copying all the keys in the key list for the second secret")
+						vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"ying": "yang", "lookat": "that"})
+						By("not copying to any of the destination keys not in the key list for the second secret")
+						vaultPathDoesNotContainUnexpectedKeys(expectedPath2, []string{"ping"})
+					})
+				})
+
+				When("There is already a key at the destination path", func() {
+					BeforeEach(func() {
+						_, err := safeSet("/secret/new/place", map[string]string{"hi": "there"})
+						Expect(err).NotTo(HaveOccurred())
+						paramKeys1 = []interface{}{
+							map[string]interface{}{"ying": "yingling"},
+						}
+						paramKeys2 = []interface{}{
+							map[string]interface{}{"this": "lookat"},
+						}
+						inputSecretMap = append(
+							createSecretMaps(src1, dest1, paramKeys1),
+							createSecretMaps(src2, dest2, paramKeys2)...,
+						)
+					})
+
+					It("should merge in secrets and rename them appropriately at the destination without removing existing keys", func() {
+						vaultPathContainsExpectedKeysAndValues(expectedPath1, map[string]string{"yingling": "yang", "hi": "there"})
+						vaultPathContainsExpectedKeysAndValues(expectedPath2, map[string]string{"lookat": "that"})
+					})
+				})
 			})
-			It("should fail gracefully if Keys contains a key to be renamed that doesn't exist", func() {
-				keys := []interface{}{
-					map[string]interface{}{"ping": "pong"},
-					map[string]interface{}{"oops": "dang"},
-					map[string]interface{}{"king": "queen"},
-				}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Specified keys not found in input for secret"))
-				Expect(err.Error()).To(ContainSubstring("oops"))
-				Expect(err.Error()).To(ContainSubstring("king"))
-				Expect(err.Error()).NotTo(ContainSubstring("ping"))
-			})
-			It("should fail gracefully if a circular reference exists trying to rename keys", func() {
-				keys := []interface{}{
-					map[string]interface{}{"ping": "pong"},
-					map[string]interface{}{"pong": "pang"},
-				}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Circular reference trying to rename the following keys for secret"))
-				Expect(err.Error()).To(ContainSubstring("pong"))
-				Expect(err.Error()).NotTo(ContainSubstring("ping"))
-				Expect(err.Error()).NotTo(ContainSubstring("this"))
-				Expect(err.Error()).NotTo(ContainSubstring(" ying"))
-			})
-			It("should fail gracefully if Keys contains map with multiple elements", func() {
-				keys := []interface{}{
-					"ping",
-					map[string]interface{}{"ying": "yingling", "oh": "no"},
-				}
-				secretMaps := createSecretMaps("/some/place", "", keys)
-				err := createSecretsAndCallOutFunction(secretMaps)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("Only one key/value pair can be specified in"))
-				Expect(err.Error()).To(ContainSubstring("oh:no"))
-				Expect(err.Error()).To(ContainSubstring("ying:yingling"))
-			})
-			It("should import secrets from directory (original test for backward compatibility)", func() {
-				inDir := filepath.Join(home, "in")
-				secretDir := filepath.Join(inDir, "root/secret")
-				err := os.MkdirAll(secretDir, 0775)
-				Expect(err).ToNot(HaveOccurred())
-				ioutil.WriteFile(filepath.Join(secretDir, "othersecrets"), []byte(`{"ping":"pong"}`), 0644)
-				_, _, err = r.Out(inDir, oc.Source{
-					"url":   url,
-					"token": token,
-					"paths": []string{
-						"/secret/handshake",
-					},
-				}, oc.Params{
-					"path":   "root/secret",
-					"prefix": "secret",
-				}, env, testLogger)
-				Expect(err).ToNot(HaveOccurred())
-				s := safe(home, "get", "/secret/othersecrets:ping")
-				s.Stdout = nil
-				result, err := s.Output()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(result)).To(Equal("pong\n"))
+
+			When("An error is expected", func() {
+				BeforeEach(func() {
+					skipOutErrCheck = true
+				})
+
+				Context("Because no source is specified", func() {
+					BeforeEach(func() {
+						inputSecretMap = createSecretMaps("", "", nil)
+					})
+
+					It("should err", func() {
+						Expect(outErr).To(HaveOccurred())
+					})
+				})
+
+				Context("Because Keys contains a key that doesn't exist", func() {
+					BeforeEach(func() {
+						inputSecretMap = createSecretMaps("/some/place", "",
+							[]interface{}{"ping", "king", "ting"},
+						)
+					})
+
+					It("should err", func() {
+						Expect(outErr).To(HaveOccurred())
+					})
+				})
+
+				Context("Because Keys contains a source key to be renamed that doesn't exist", func() {
+					BeforeEach(func() {
+						inputSecretMap = createSecretMaps("/some/place", "",
+							[]interface{}{
+								map[string]interface{}{"ping": "pong"},
+								map[string]interface{}{"oops": "dang"},
+								map[string]interface{}{"king": "queen"},
+							},
+						)
+					})
+
+					It("should err", func() {
+						Expect(outErr).To(HaveOccurred())
+					})
+				})
+
+				Context("Because Keys contains a map with multiple elements", func() {
+					BeforeEach(func() {
+						inputSecretMap = createSecretMaps("/some/place", "",
+							[]interface{}{
+								"ping",
+								map[string]interface{}{"ying": "yingling", "oh": "no"},
+							},
+						)
+
+						It("should err", func() {
+							Expect(outErr).To(HaveOccurred())
+						})
+					})
+				})
 			})
 		})
 	})

@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	oc "github.com/cloudboss/ofcourse/ofcourse"
-	sv "github.com/starkandwayne/safe/vault"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
+
+	oc "github.com/cloudboss/ofcourse/ofcourse"
+	sv "github.com/starkandwayne/safe/vault"
 )
 
 var (
@@ -208,15 +210,15 @@ func (r *Resource) Out(inputDirectory string, source oc.Source, params oc.Params
 			return nil, nil, err
 		}
 
-		err = filterAndRenameKeys(secret, finalKeys)
+		secretToWrite := filterAndRenameKeys(secret, finalKeys)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		finalVaultPath := filepath.Join(p.Prefix, secretMap.Dest)
-		retainExistingKeys(r.client, finalVaultPath, secret)
+		retainExistingKeys(r.client, finalVaultPath, secretToWrite)
 
-		err = copySecretToVault(r.client, finalVaultPath, secret)
+		err = copySecretToVault(r.client, finalVaultPath, secretToWrite)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -272,68 +274,75 @@ func validate(secret *sv.Secret, finalKeys map[string]string, source string) err
 		return nil
 	}
 
-	keysFromExistingSecret := make([]string, 0, len(finalKeys))
-	keysForNewSecret := make([]string, 0, len(finalKeys))
+	destKeyRefs := map[string]int{}
+	thereAreDuplicateDestKeys := false
+	missingKeysDedup := map[string]bool{}
 
-	missingKeys := []string{}
-	for keyFromExistingSecret, keyForNewSecret := range finalKeys {
-		renamingKey := keyFromExistingSecret != keyForNewSecret
-		if renamingKey {
-			keysFromExistingSecret = append(keysFromExistingSecret, keyFromExistingSecret)
-			keysForNewSecret = append(keysForNewSecret, keyForNewSecret)
+	for srcKey, destKey := range finalKeys {
+		if destKeyRefs[destKey] > 0 {
+			thereAreDuplicateDestKeys = true
 		}
-		if !secret.Has(keyFromExistingSecret) {
-			missingKeys = append(missingKeys, keyFromExistingSecret)
+		destKeyRefs[destKey]++
+
+		if !secret.Has(srcKey) {
+			missingKeysDedup[srcKey] = true
 		}
 	}
 
-	illegalKeys := []string{}
-	for _, keyForNewSecret := range keysForNewSecret {
-		for _, keyFromExistingSecret := range keysFromExistingSecret {
-			if keyFromExistingSecret == keyForNewSecret {
-				illegalKeys = append(illegalKeys, keyFromExistingSecret)
+	errorMessages := []string{}
+
+	//The logic here is sort of weird, but its all to dedup in the case that a
+	// key is referenced, say, three times (and then sort it to have a
+	// deterministic error ordering)
+	if thereAreDuplicateDestKeys {
+		duplicateDestKeys := []string{}
+		for destKey, refCount := range destKeyRefs {
+			if refCount > 1 {
+				duplicateDestKeys = append(duplicateDestKeys, destKey)
 			}
 		}
+		sort.Strings(duplicateDestKeys)
+		errorMessages = append(errorMessages,
+			fmt.Sprintf("Reused destination keys when copying secret `%s': %s",
+				source,
+				strings.Join(duplicateDestKeys, ","),
+			),
+		)
 	}
 
-	var sb strings.Builder
-	if len(illegalKeys) > 0 {
-		sb.WriteString("Circular reference trying to rename the following keys for secret ")
-		sb.WriteString(source)
-		sb.WriteString(": ")
-		sb.WriteString(strings.Join(illegalKeys, ","))
-		return fmt.Errorf(sb.String())
+	if len(missingKeysDedup) > 0 {
+		missingKeys := []string{}
+		for srcKey := range missingKeysDedup {
+			missingKeys = append(missingKeys, srcKey)
+		}
+		sort.Strings(missingKeys)
+		errorMessages = append(errorMessages,
+			fmt.Sprintf("Specified keys not found in input for secret `%s': %s",
+				source,
+				strings.Join(missingKeys, ","),
+			),
+		)
 	}
 
-	if len(missingKeys) > 0 {
-		sb.WriteString("Specified keys not found in input for secret ")
-		sb.WriteString(source)
-		sb.WriteString(": ")
-		sb.WriteString(strings.Join(missingKeys, ","))
-		return fmt.Errorf(sb.String())
+	if len(errorMessages) > 0 {
+		return fmt.Errorf("%s", strings.Join(errorMessages, "\n"))
 	}
 
 	return nil
 }
 
-func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) error {
+func filterAndRenameKeys(secret *sv.Secret, finalKeys map[string]string) *sv.Secret {
 	if len(finalKeys) == 0 {
-		return nil
+		return secret
 	}
-	for _, currentKey := range secret.Keys() {
-		finalKey, exists := finalKeys[currentKey]
-		if exists {
-			value := secret.Get(currentKey)
-			err := secret.Set(finalKey, value, false)
-			if err != nil {
-				return err
-			}
-		}
-		if (!exists) || (finalKey != currentKey) {
-			secret.Delete(currentKey)
-		}
+
+	ret := sv.NewSecret()
+
+	for srcKey, destKey := range finalKeys {
+		ret.Set(destKey, secret.Get(srcKey), false)
 	}
-	return nil
+
+	return ret
 }
 
 func copySecretToVault(client *sv.Vault, finalVaultPath string, newSecret *sv.Secret) error {
@@ -362,7 +371,12 @@ func getFinalKeys(keys []interface{}) (map[string]string, error) {
 				return nil, fmt.Errorf("Only one key/value pair can be specified in %s", v)
 			}
 			for key, value := range v {
-				finalKeys[key] = value.(string)
+				valueString, isString := value.(string)
+				if !isString {
+					return nil, fmt.Errorf("Value in key map for key `%s' should be of type string", key)
+				}
+
+				finalKeys[key] = valueString
 			}
 		default:
 			return nil, fmt.Errorf("The secret_map keys field can contain combinations of strings and key/value pairs. It cannot contain %s", reflect.TypeOf(key))
